@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Hyperping API Docs
+    url: https://hyperping.io/docs
+    about: Official Hyperping API documentation
+  - name: Develeap
+    url: https://develeap.com
+    about: The team behind this SDK

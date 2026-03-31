@@ -1,0 +1,5 @@
+# All files — Develeap team is the default reviewer
+* @develeap/maintainers
+
+# Workflows require an extra eye
+.github/workflows/ @KhaledSalhab-Develeap
