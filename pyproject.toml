@@ -7,7 +7,7 @@ name = "hyperping"
 version = "0.1.0"
 description = "Python SDK for the Hyperping uptime monitoring and incident management API"
 readme = "README.md"
-license = "MIT"
+license = {text = "MIT"}
 requires-python = ">=3.11"
 authors = [{ name = "Develeap", email = "dev@develeap.com" }]
 keywords = ["hyperping", "monitoring", "uptime", "status-page", "incident", "api-client"]
