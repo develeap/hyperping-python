@@ -11,6 +11,8 @@ Python SDK for the [Hyperping](https://hyperping.io) uptime monitoring and incid
 
 ## Installation
 
+Requires **Python 3.11+**.
+
 ```bash
 pip install hyperping
 # or
@@ -175,11 +177,11 @@ This package ships a `py.typed` marker (PEP 561) and is fully typed. Works out o
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+See [CONTRIBUTING.md](https://github.com/develeap/hyperping-python/blob/main/CONTRIBUTING.md).
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](https://github.com/develeap/hyperping-python/blob/main/LICENSE).
 
 ## Maintained by
 
