@@ -15,12 +15,12 @@ from typing import Any
 import httpx
 from pydantic import SecretStr
 
-from hyperping._version import __version__
 from hyperping._incidents_mixin import IncidentsMixin
 from hyperping._maintenance_mixin import MaintenanceMixin
 from hyperping._monitors_mixin import MonitorsMixin
 from hyperping._outages_mixin import OutagesMixin
 from hyperping._statuspages_mixin import StatusPagesMixin
+from hyperping._version import __version__
 from hyperping.endpoints import (
     API_BASE,
 )

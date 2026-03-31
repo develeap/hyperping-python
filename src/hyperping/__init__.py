@@ -15,7 +15,6 @@ Quick start::
 """
 
 from hyperping._version import __version__
-
 from hyperping.client import (
     CircuitBreaker,
     CircuitBreakerConfig,
@@ -81,6 +80,8 @@ from hyperping.models import (
 )
 
 __all__ = [
+    # Version
+    "__version__",
     # Client
     "HyperpingClient",
     # Configuration
