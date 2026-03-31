@@ -6,11 +6,11 @@ build-backend = "hatchling.build"
 name = "hyperping"
 version = "0.1.0"
 description = "Python SDK for the Hyperping uptime monitoring and incident management API"
-readme = "README.md"
+readme = {file = "README.md", content-type = "text/markdown"}
 license = {text = "MIT"}
 requires-python = ">=3.11"
 authors = [{ name = "Develeap", email = "dev@develeap.com" }]
-keywords = ["hyperping", "monitoring", "uptime", "status-page", "incident", "api-client"]
+keywords = ["hyperping", "monitoring", "uptime", "status-page", "incident", "api-client", "sdk", "python", "pydantic", "httpx"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
