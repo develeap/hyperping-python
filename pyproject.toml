@@ -49,6 +49,9 @@ Issues        = "https://github.com/develeap/hyperping-python/issues"
 [tool.hatch.build.targets.wheel]
 packages = ["src/hyperping"]
 
+[tool.hatch.build.targets.sdist]
+exclude = [".claude/", "dist/"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--cov=hyperping --cov-report=term-missing --cov-fail-under=85"

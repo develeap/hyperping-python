@@ -27,3 +27,7 @@ htmlcov/
 
 # OS
 .DS_Store
+
+# Local dev tooling
+.claude/
+dist/
