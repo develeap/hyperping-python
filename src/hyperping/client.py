@@ -15,6 +15,7 @@ from typing import Any
 import httpx
 from pydantic import SecretStr
 
+from hyperping._version import __version__
 from hyperping._incidents_mixin import IncidentsMixin
 from hyperping._maintenance_mixin import MaintenanceMixin
 from hyperping._monitors_mixin import MonitorsMixin
@@ -33,7 +34,7 @@ from hyperping.exceptions import (
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_USER_AGENT = "hyperping-python/0.1.0"
+_DEFAULT_USER_AGENT = f"hyperping-python/{__version__}"
 
 
 @dataclass(frozen=True)

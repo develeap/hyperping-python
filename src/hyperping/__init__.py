@@ -14,7 +14,7 @@ Quick start::
             print(f"{m.name}: {'down' if m.down else 'up'}")
 """
 
-__version__ = "0.1.0"
+from hyperping._version import __version__
 
 from hyperping.client import (
     CircuitBreaker,
