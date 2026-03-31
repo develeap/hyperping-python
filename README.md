@@ -1,7 +1,7 @@
 # hyperping
 
-[![PyPI version](https://img.shields.io/pypi/v/hyperping.svg)](https://pypi.org/project/hyperping/)
-[![Python versions](https://img.shields.io/pypi/pyversions/hyperping.svg)](https://pypi.org/project/hyperping/#history)
+[![PyPI version](https://img.shields.io/pypi/v/hyperping)](https://pypi.org/project/hyperping/)
+[![Python versions](https://img.shields.io/pypi/pyversions/hyperping)](https://pypi.org/project/hyperping/#history)
 [![CI](https://github.com/develeap/hyperping-python/actions/workflows/ci.yml/badge.svg)](https://github.com/develeap/hyperping-python/actions/workflows/ci.yml)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Checked with mypy](https://www.mypy-lang.org/static/mypy_badge.svg)](https://mypy-lang.org/)
