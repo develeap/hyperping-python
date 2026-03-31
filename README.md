@@ -178,3 +178,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Maintained by
+
+[Develeap](https://develeap.com)

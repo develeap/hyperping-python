@@ -8,7 +8,9 @@ import logging
 import random
 import threading
 import time
-from typing import Any, cast
+from dataclasses import dataclass
+from enum import StrEnum
+from typing import Any
 
 import httpx
 from pydantic import SecretStr
@@ -34,31 +36,15 @@ logger = logging.getLogger(__name__)
 _DEFAULT_USER_AGENT = "hyperping-python/0.1.0"
 
 
+@dataclass(frozen=True)
 class RetryConfig:
     """Configuration for retry behavior."""
 
-    def __init__(
-        self,
-        max_retries: int = 3,
-        initial_delay: float = 1.0,
-        max_delay: float = 30.0,
-        backoff_factor: float = 2.0,
-        retry_on_status: tuple[int, ...] = (429, 500, 502, 503, 504),
-    ) -> None:
-        """Configure retry behavior for API requests.
-
-        Args:
-            max_retries: Maximum number of retry attempts after the initial request.
-            initial_delay: Initial delay in seconds before the first retry.
-            max_delay: Maximum delay in seconds between retries (caps backoff).
-            backoff_factor: Multiplier applied to the delay after each retry.
-            retry_on_status: HTTP status codes that trigger a retry.
-        """
-        self.max_retries = max_retries
-        self.initial_delay = initial_delay
-        self.max_delay = max_delay
-        self.backoff_factor = backoff_factor
-        self.retry_on_status = retry_on_status
+    max_retries: int = 3
+    initial_delay: float = 1.0
+    max_delay: float = 30.0
+    backoff_factor: float = 2.0
+    retry_on_status: tuple[int, ...] = (429, 500, 502, 503, 504)
 
 
 DEFAULT_RETRY_CONFIG = RetryConfig()
@@ -67,7 +53,7 @@ DEFAULT_RETRY_CONFIG = RetryConfig()
 _RETRY_AFTER_MAX = 300.0
 
 
-class CircuitState:
+class CircuitState(StrEnum):
     """Circuit breaker states."""
 
     CLOSED = "closed"  # Normal: requests flow through
@@ -75,25 +61,13 @@ class CircuitState:
     HALF_OPEN = "half_open"  # Testing: one request allowed through
 
 
+@dataclass(frozen=True)
 class CircuitBreakerConfig:
     """Configuration for circuit breaker behavior."""
 
-    def __init__(
-        self,
-        failure_threshold: int = 5,
-        recovery_timeout: float = 60.0,
-        half_open_max_calls: int = 1,
-    ) -> None:
-        """Configure circuit breaker behavior.
-
-        Args:
-            failure_threshold: Consecutive failures required to open the circuit.
-            recovery_timeout: Seconds to wait before transitioning to half-open.
-            half_open_max_calls: Maximum trial calls allowed in half-open state.
-        """
-        self.failure_threshold = failure_threshold
-        self.recovery_timeout = recovery_timeout
-        self.half_open_max_calls = half_open_max_calls
+    failure_threshold: int = 5
+    recovery_timeout: float = 60.0
+    half_open_max_calls: int = 1
 
 
 DEFAULT_CIRCUIT_BREAKER_CONFIG = CircuitBreakerConfig()
@@ -117,6 +91,7 @@ class CircuitBreaker:
         self._config = config or DEFAULT_CIRCUIT_BREAKER_CONFIG
         self._state = CircuitState.CLOSED
         self._failure_count = 0
+        self._half_open_calls: int = 0
         self._last_failure_time: float | None = None
         self._lock = threading.Lock()
 
@@ -147,12 +122,16 @@ class CircuitBreaker:
                         logger.info("Circuit breaker: OPEN → HALF_OPEN (trial call allowed)")
                         return True
                 return False
-            # HALF_OPEN
-            return True
+            # HALF_OPEN: allow only up to half_open_max_calls trial requests
+            if self._half_open_calls < self._config.half_open_max_calls:
+                self._half_open_calls += 1
+                return True
+            return False
 
     def record_success(self) -> None:
         """Record a successful call — reset to CLOSED."""
         with self._lock:
+            self._half_open_calls = 0
             if self._state != CircuitState.CLOSED:
                 logger.info(
                     f"Circuit breaker: {self._state} → CLOSED (recovered after "
@@ -165,6 +144,7 @@ class CircuitBreaker:
     def record_failure(self) -> None:
         """Record a failed call — may open the circuit."""
         with self._lock:
+            self._half_open_calls = 0
             self._failure_count += 1
             self._last_failure_time = time.time()
             if self._failure_count >= self._config.failure_threshold:
@@ -294,11 +274,17 @@ class HyperpingClient(
             )
         elif status == 429:
             retry_after = response.headers.get("Retry-After")
+            retry_after_seconds: int | None = None
+            if retry_after:
+                try:
+                    retry_after_seconds = int(retry_after)
+                except ValueError:
+                    retry_after_seconds = None
             raise HyperpingRateLimitError(
                 message=f"Rate limit exceeded: {error_msg}",
                 status_code=status,
                 response_body=body,
-                retry_after=int(retry_after) if retry_after else None,
+                retry_after=retry_after_seconds,
                 request_id=request_id,
             )
         elif status == 400 or status == 422:
@@ -348,7 +334,7 @@ class HyperpingClient(
         self._circuit_breaker.record_success()
         if response.status_code == 204:
             return {}
-        return cast(dict[str, Any], response.json())
+        return response.json()  # type: ignore[no-any-return]  # list endpoints return arrays; callers use isinstance checks
 
     def _request(
         self,
@@ -398,19 +384,18 @@ class HyperpingClient(
                         retry_after = response.headers.get("Retry-After")
                         if retry_after:
                             delay = min(float(retry_after), _RETRY_AFTER_MAX)
+                    sleep_time = delay
+                    if response.status_code != 429:
+                        sleep_time = delay + random.uniform(0, delay * 0.25)
                     logger.warning(
-                        f"Retrying after {delay}s due to {response.status_code} "
+                        f"Retrying after {sleep_time:.2f}s due to {response.status_code} "
                         f"(attempt {attempt + 1}/{max_attempts})"
                     )
-                    time.sleep(delay)
+                    time.sleep(sleep_time)
                     delay = min(
                         delay * self.retry_config.backoff_factor,
                         self.retry_config.max_delay,
                     )
-                    # Add jitter for non-429 retries (429 uses server's Retry-After)
-                    if response.status_code != 429:
-                        jitter = random.uniform(0, delay * 0.25)
-                        delay = delay + jitter
                     continue
 
                 # Only trip circuit breaker on server errors, not client errors
@@ -422,17 +407,16 @@ class HyperpingClient(
                 last_exception = e
                 if attempt < self.retry_config.max_retries:
                     label = "timeout" if isinstance(e, httpx.TimeoutException) else str(e)
+                    sleep_time = delay + random.uniform(0, delay * 0.25)
                     logger.warning(
-                        f"Request {label}, retrying after {delay}s "
+                        f"Request {label}, retrying after {sleep_time:.2f}s "
                         f"(attempt {attempt + 1}/{max_attempts})"
                     )
-                    time.sleep(delay)
+                    time.sleep(sleep_time)
                     delay = min(
                         delay * self.retry_config.backoff_factor,
                         self.retry_config.max_delay,
                     )
-                    jitter = random.uniform(0, delay * 0.25)
-                    delay = delay + jitter
                     continue
                 self._circuit_breaker.record_failure()
                 if isinstance(e, httpx.TimeoutException):
@@ -463,5 +447,5 @@ class HyperpingClient(
             return True
         except HyperpingAuthError:
             raise
-        except Exception as e:
+        except (HyperpingAPIError, httpx.RequestError, httpx.TimeoutException) as e:
             raise HyperpingAPIError(f"API connectivity test failed: {e}") from e

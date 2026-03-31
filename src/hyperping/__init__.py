@@ -96,7 +96,7 @@ __all__ = [
     "ENDPOINTS",
     "get_endpoint_url",
     "get_version_for_endpoint",
-    # Backward compatibility
+    # Convenience aliases (also used in tests)
     "HYPERPING_API_BASE",
     "API_PATHS",
     # Exceptions
