@@ -1,0 +1,180 @@
+# hyperping
+
+[![PyPI version](https://img.shields.io/pypi/v/hyperping.svg)](https://pypi.org/project/hyperping/)
+[![Python versions](https://img.shields.io/pypi/pyversions/hyperping.svg)](https://pypi.org/project/hyperping/)
+[![CI](https://github.com/develeap/hyperping-python/actions/workflows/ci.yml/badge.svg)](https://github.com/develeap/hyperping-python/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+Python SDK for the [Hyperping](https://hyperping.io) uptime monitoring and incident management API.
+
+## Installation
+
+```bash
+pip install hyperping
+# or
+uv add hyperping
+```
+
+## Quick Start
+
+```python
+from hyperping import HyperpingClient, IncidentCreate, LocalizedText
+
+with HyperpingClient(api_key="sk_...") as client:
+    # List all monitors
+    monitors = client.list_monitors()
+    for m in monitors:
+        print(f"{m.name}: {'down' if m.down else 'up'}")
+
+    # Open an incident
+    incident = client.create_incident(
+        IncidentCreate(
+            title=LocalizedText(en="Service degradation"),
+            text=LocalizedText(en="Investigating elevated error rates"),
+            statuspages=["sp_your_uuid"],
+        )
+    )
+
+    # Resolve it
+    client.resolve_incident(incident.uuid, "All systems operational")
+```
+
+## Authentication
+
+Pass your API key directly or via environment variable:
+
+```python
+import os
+from hyperping import HyperpingClient
+
+# Constructor param
+client = HyperpingClient(api_key="sk_...")
+
+# From environment
+client = HyperpingClient(api_key=os.environ["HYPERPING_API_KEY"])
+```
+
+## Resources
+
+### Monitors
+
+```python
+monitors = client.list_monitors()
+monitor  = client.get_monitor("mon_uuid")
+created  = client.create_monitor(MonitorCreate(name="API", url="https://api.example.com"))
+client.pause_monitor("mon_uuid")
+client.resume_monitor("mon_uuid")
+client.delete_monitor("mon_uuid")
+
+# Reports
+reports = client.get_all_reports(period="30d")
+report  = client.get_monitor_report("mon_uuid", period="7d")
+```
+
+### Incidents
+
+```python
+incidents = client.list_incidents()
+incident  = client.get_incident("inci_uuid")
+created   = client.create_incident(IncidentCreate(...))
+client.add_incident_update("inci_uuid", AddIncidentUpdateRequest(...))
+client.resolve_incident("inci_uuid", "Fixed")
+client.delete_incident("inci_uuid")
+```
+
+### Maintenance Windows
+
+```python
+windows = client.list_maintenance()
+window  = client.get_maintenance("mw_uuid")
+created = client.create_maintenance(MaintenanceCreate(...))
+client.update_maintenance("mw_uuid", MaintenanceUpdate(name="New name"))
+client.delete_maintenance("mw_uuid")
+
+# Helpers
+active = client.get_active_maintenance()
+in_maint = client.is_monitor_in_maintenance("mon_uuid")
+```
+
+### Outages
+
+```python
+outages = client.list_outages()
+client.acknowledge_outage("out_uuid", message="On it")
+client.resolve_outage("out_uuid", message="Fixed")
+client.escalate_outage("out_uuid")
+```
+
+### Status Pages
+
+```python
+pages = client.list_status_pages(search="prod")
+page  = client.get_status_page("sp_uuid")
+created = client.create_status_page(StatusPageCreate(name="Prod", subdomain="prod-status"))
+client.update_status_page("sp_uuid", StatusPageUpdate(name="Production Status"))
+client.delete_status_page("sp_uuid")
+
+# Subscribers
+subs = client.list_subscribers("sp_uuid")
+sub  = client.add_subscriber("sp_uuid", "user@example.com")
+client.remove_subscriber("sp_uuid", sub.id)
+```
+
+## Error Handling
+
+```python
+from hyperping import (
+    HyperpingAPIError,
+    HyperpingAuthError,
+    HyperpingNotFoundError,
+    HyperpingRateLimitError,
+    HyperpingValidationError,
+)
+
+try:
+    monitor = client.get_monitor("mon_uuid")
+except HyperpingNotFoundError:
+    print("Monitor not found")
+except HyperpingRateLimitError as e:
+    print(f"Rate limited. Retry after {e.retry_after}s")
+except HyperpingAuthError:
+    print("Invalid API key")
+except HyperpingAPIError as e:
+    print(f"API error [{e.status_code}]: {e.message}")
+    print(f"Request ID: {e.request_id}")
+```
+
+## Retries and Circuit Breaker
+
+The SDK retries automatically on transient errors (5xx, 429) with exponential backoff and jitter. A circuit breaker prevents cascading failures.
+
+```python
+from hyperping import HyperpingClient
+from hyperping.client import RetryConfig, CircuitBreakerConfig
+
+client = HyperpingClient(
+    api_key="sk_...",
+    retry_config=RetryConfig(
+        max_retries=3,
+        initial_delay=1.0,
+        max_delay=30.0,
+        backoff_factor=2.0,
+    ),
+    circuit_breaker_config=CircuitBreakerConfig(
+        failure_threshold=5,
+        recovery_timeout=60.0,
+    ),
+)
+```
+
+## Type Safety
+
+This package ships a `py.typed` marker (PEP 561) and is fully typed. Works out of the box with mypy and pyright.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+MIT — see [LICENSE](LICENSE).
