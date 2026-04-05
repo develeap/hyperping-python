@@ -248,7 +248,12 @@ class MonitorBase(BaseModel):
 
     # Helper methods for backward compatibility
     def get_headers_dict(self) -> dict[str, str]:
-        """Get headers as a dictionary for convenience."""
+        """Get headers as a dictionary for convenience.
+
+        Warning: The returned dict may contain sensitive values (e.g.,
+        Authorization tokens) that the user configured on this monitor.
+        Avoid logging the result without redacting sensitive keys first.
+        """
         return {h.name: h.value for h in self.request_headers}
 
     @staticmethod

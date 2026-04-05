@@ -121,7 +121,10 @@ class HyperpingClient(
             user_agent: Custom ``User-Agent`` header value. Defaults to
                 ``hyperping-python/0.1.0``.
         """
-        self._api_key = SecretStr(api_key) if isinstance(api_key, str) else api_key
+        raw_key = api_key.get_secret_value() if isinstance(api_key, SecretStr) else api_key
+        if not raw_key or not raw_key.strip():
+            raise ValueError("api_key must be a non-empty string")
+        self._api_key = SecretStr(raw_key) if isinstance(api_key, str) else api_key
         self.base_url = (base_url or self.DEFAULT_BASE_URL).rstrip("/")
         self.timeout = timeout
         self.retry_config = retry_config or DEFAULT_RETRY_CONFIG
@@ -268,7 +271,12 @@ class HyperpingClient(
         if response.status_code == 429:
             retry_after = response.headers.get("Retry-After")
             if retry_after:
-                return min(float(retry_after), _RETRY_AFTER_MAX)
+                try:
+                    return min(float(retry_after), _RETRY_AFTER_MAX)
+                except (ValueError, OverflowError):
+                    # RFC 7231 allows HTTP-date strings in Retry-After;
+                    # fall through to exponential backoff if unparseable.
+                    pass
         return delay + random.uniform(0, delay * 0.25)
 
     def _should_retry(self, status_code: int, attempt: int) -> bool:
