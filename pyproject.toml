@@ -51,7 +51,7 @@ Issues        = "https://github.com/develeap/hyperping-python/issues"
 packages = ["src/hyperping"]
 
 [tool.hatch.build.targets.sdist]
-exclude = [".claude/", "dist/"]
+exclude = [".claude/", ".github/", "dist/", "uv.lock", "BACKLOG.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
