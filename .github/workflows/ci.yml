@@ -38,7 +38,7 @@ jobs:
 
       - name: Audit dependencies
         continue-on-error: true
-        run: uv run pip-audit 2>/dev/null || uv audit
+        run: uv run pip-audit
 
       - name: Upload coverage to Codecov
         if: matrix.python-version == '3.12'
