@@ -24,14 +24,8 @@ from hyperping.client import (
 )
 from hyperping.endpoints import (
     API_BASE,
-    API_PATHS,
-    ENDPOINTS,
-    HYPERPING_API_BASE,
     APIVersion,
     Endpoint,
-    EndpointConfig,
-    get_endpoint_url,
-    get_version_for_endpoint,
 )
 from hyperping.exceptions import (
     HyperpingAPIError,
@@ -43,15 +37,12 @@ from hyperping.exceptions import (
 from hyperping.models import (
     DEFAULT_REGIONS,
     AddIncidentUpdateRequest,
-    APIErrorResponse,
     DnsRecordType,
     HttpMethod,
     Incident,
     IncidentCreate,
-    IncidentStatus,
     IncidentType,
     IncidentUpdate,
-    IncidentUpdateCreate,
     IncidentUpdateRequest,
     IncidentUpdateType,
     LocalizedText,
@@ -68,6 +59,7 @@ from hyperping.models import (
     MonitorTimeout,
     MonitorUpdate,
     NotificationOption,
+    Outage,
     OutageDetail,
     OutageStats,
     Region,
@@ -89,17 +81,10 @@ __all__ = [
     "CircuitBreakerConfig",
     "CircuitBreaker",
     "CircuitState",
-    # Endpoints
+    # Endpoints — public types only (H5)
     "API_BASE",
     "Endpoint",
     "APIVersion",
-    "EndpointConfig",
-    "ENDPOINTS",
-    "get_endpoint_url",
-    "get_version_for_endpoint",
-    # Convenience aliases (also used in tests)
-    "HYPERPING_API_BASE",
-    "API_PATHS",
     # Exceptions
     "HyperpingAPIError",
     "HyperpingAuthError",
@@ -126,13 +111,14 @@ __all__ = [
     "AddIncidentUpdateRequest",
     "Incident",
     "IncidentCreate",
-    "IncidentStatus",
     "IncidentType",
     "IncidentUpdate",
-    "IncidentUpdateCreate",
     "IncidentUpdateRequest",
     "IncidentUpdateType",
     "LocalizedText",
+    # Deprecated aliases (accessible via __getattr__, removed in v0.3.0)
+    "IncidentStatus",
+    "IncidentUpdateCreate",
     # Maintenance
     "Maintenance",
     "MaintenanceCreate",
@@ -142,10 +128,76 @@ __all__ = [
     "ReportPeriod",
     "OutageDetail",
     "OutageStats",
-    "APIErrorResponse",
+    # Outages
+    "Outage",
     # Status Pages
     "StatusPage",
     "StatusPageCreate",
     "StatusPageUpdate",
     "StatusPageSubscriber",
 ]
+
+
+def __getattr__(name: str) -> object:
+    """Provide deprecated symbols with DeprecationWarning on access (H5, L3).
+
+    ``HYPERPING_API_BASE`` and ``API_PATHS`` — legacy endpoint constants.
+    ``IncidentStatus`` and ``IncidentUpdateCreate`` — legacy type aliases.
+
+    All four will be removed in v0.3.0.
+    """
+    import warnings
+
+    if name == "HYPERPING_API_BASE":
+        warnings.warn(
+            "HYPERPING_API_BASE is deprecated and will be removed in v0.3.0. "
+            "Use API_BASE instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return API_BASE
+
+    if name == "API_PATHS":
+        warnings.warn(
+            "API_PATHS is deprecated and will be removed in v0.3.0. "
+            "Use the Endpoint enum instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        from hyperping import endpoints as _ep
+
+        return _ep.API_PATHS
+
+    if name == "IncidentStatus":
+        warnings.warn(
+            "IncidentStatus is deprecated and will be removed in v0.3.0. "
+            "Use IncidentUpdateType instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return IncidentUpdateType
+
+    if name == "IncidentUpdateCreate":
+        warnings.warn(
+            "IncidentUpdateCreate is deprecated and will be removed in v0.3.0. "
+            "Use AddIncidentUpdateRequest instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return AddIncidentUpdateRequest
+
+    # Symbols removed from __all__ (H5) but still accessible for backward compat
+    _endpoint_helpers = {
+        "EndpointConfig", "ENDPOINTS", "get_endpoint_url", "get_version_for_endpoint",
+    }
+    if name in _endpoint_helpers:
+        from hyperping import endpoints as _ep
+
+        return getattr(_ep, name)
+
+    if name == "APIErrorResponse":
+        from hyperping.models._monitor_models import APIErrorResponse  # noqa: N813
+
+        return APIErrorResponse
+
+    raise AttributeError(f"module 'hyperping' has no attribute {name!r}")

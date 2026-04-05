@@ -6,8 +6,8 @@ import httpx
 import pytest
 import respx
 
-from hyperping import API_PATHS, HYPERPING_API_BASE
 from hyperping.client import HyperpingClient
+from hyperping.endpoints import API_BASE, Endpoint
 from hyperping.exceptions import HyperpingNotFoundError
 from hyperping.models import (
     Maintenance,
@@ -123,7 +123,7 @@ class TestMaintenanceAPIClient:
                 },
             ]
         }
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['maintenance']}").mock(
+        respx.get(f"{API_BASE}{Endpoint.MAINTENANCE}").mock(
             return_value=httpx.Response(200, json=mock_response)
         )
 
@@ -135,7 +135,7 @@ class TestMaintenanceAPIClient:
     @respx.mock
     def test_list_maintenance_empty(self, client: HyperpingClient) -> None:
         """Test listing with no maintenance windows."""
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['maintenance']}").mock(
+        respx.get(f"{API_BASE}{Endpoint.MAINTENANCE}").mock(
             return_value=httpx.Response(200, json={"maintenanceWindows": []})
         )
         windows = client.list_maintenance()
@@ -152,7 +152,7 @@ class TestMaintenanceAPIClient:
             "monitors": ["mon_1"],
             "statuspages": [],
         }
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['maintenance']}/mw_123").mock(
+        respx.get(f"{API_BASE}{Endpoint.MAINTENANCE}/mw_123").mock(
             return_value=httpx.Response(200, json=mock_response)
         )
 
@@ -163,7 +163,7 @@ class TestMaintenanceAPIClient:
     @respx.mock
     def test_get_maintenance_not_found(self, client: HyperpingClient) -> None:
         """Test getting a non-existent maintenance window."""
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['maintenance']}/mw_nope").mock(
+        respx.get(f"{API_BASE}{Endpoint.MAINTENANCE}/mw_nope").mock(
             return_value=httpx.Response(404, json={"error": "Not found"})
         )
         with pytest.raises(HyperpingNotFoundError):
@@ -181,10 +181,10 @@ class TestMaintenanceAPIClient:
             "monitors": ["mon_1"],
             "statuspages": [],
         }
-        respx.post(f"{HYPERPING_API_BASE}{API_PATHS['maintenance']}").mock(
+        respx.post(f"{API_BASE}{Endpoint.MAINTENANCE}").mock(
             return_value=httpx.Response(201, json=create_response)
         )
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['maintenance']}/mw_new").mock(
+        respx.get(f"{API_BASE}{Endpoint.MAINTENANCE}/mw_new").mock(
             return_value=httpx.Response(200, json=get_response)
         )
 
@@ -211,10 +211,10 @@ class TestMaintenanceAPIClient:
             "statuspages": [],
         }
         updated = {**current, "name": "New Name"}
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['maintenance']}/mw_123").mock(
+        respx.get(f"{API_BASE}{Endpoint.MAINTENANCE}/mw_123").mock(
             return_value=httpx.Response(200, json=current)
         )
-        respx.put(f"{HYPERPING_API_BASE}{API_PATHS['maintenance']}/mw_123").mock(
+        respx.put(f"{API_BASE}{Endpoint.MAINTENANCE}/mw_123").mock(
             return_value=httpx.Response(200, json=updated)
         )
 
@@ -224,7 +224,7 @@ class TestMaintenanceAPIClient:
     @respx.mock
     def test_delete_maintenance(self, client: HyperpingClient) -> None:
         """Test deleting a maintenance window."""
-        respx.delete(f"{HYPERPING_API_BASE}{API_PATHS['maintenance']}/mw_del").mock(
+        respx.delete(f"{API_BASE}{Endpoint.MAINTENANCE}/mw_del").mock(
             return_value=httpx.Response(204)
         )
         client.delete_maintenance("mw_del")  # Should not raise
@@ -253,7 +253,7 @@ class TestMaintenanceAPIClient:
                 },
             ]
         }
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['maintenance']}").mock(
+        respx.get(f"{API_BASE}{Endpoint.MAINTENANCE}").mock(
             return_value=httpx.Response(200, json=mock_response)
         )
 
@@ -277,7 +277,7 @@ class TestMaintenanceAPIClient:
                 },
             ]
         }
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['maintenance']}").mock(
+        respx.get(f"{API_BASE}{Endpoint.MAINTENANCE}").mock(
             return_value=httpx.Response(200, json=mock_response)
         )
 

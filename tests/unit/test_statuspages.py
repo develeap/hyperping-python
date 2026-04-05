@@ -4,8 +4,8 @@ import httpx
 import pytest
 import respx
 
-from hyperping import API_PATHS, HYPERPING_API_BASE
 from hyperping.client import HyperpingClient
+from hyperping.endpoints import API_BASE, Endpoint
 from hyperping.exceptions import HyperpingNotFoundError, HyperpingValidationError
 from hyperping.models import (
     StatusPage,
@@ -118,7 +118,7 @@ class TestStatusPagesAPIClient:
                 "monitors": [],
             },
         ]
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['statuspages']}").mock(
+        respx.get(f"{API_BASE}{Endpoint.STATUSPAGES}").mock(
             return_value=httpx.Response(200, json=mock_response)
         )
 
@@ -139,7 +139,7 @@ class TestStatusPagesAPIClient:
                 "monitors": [],
             }
         ]
-        route = respx.get(f"{HYPERPING_API_BASE}{API_PATHS['statuspages']}").mock(
+        route = respx.get(f"{API_BASE}{Endpoint.STATUSPAGES}").mock(
             return_value=httpx.Response(200, json=mock_response)
         )
 
@@ -151,7 +151,7 @@ class TestStatusPagesAPIClient:
     @respx.mock
     def test_list_status_pages_empty(self, client: HyperpingClient) -> None:
         """Test listing when no status pages exist."""
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['statuspages']}").mock(
+        respx.get(f"{API_BASE}{Endpoint.STATUSPAGES}").mock(
             return_value=httpx.Response(200, json=[])
         )
         pages = client.list_status_pages()
@@ -171,7 +171,7 @@ class TestStatusPagesAPIClient:
                 }
             ]
         }
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['statuspages']}").mock(
+        respx.get(f"{API_BASE}{Endpoint.STATUSPAGES}").mock(
             return_value=httpx.Response(200, json=mock_response)
         )
         pages = client.list_status_pages()
@@ -189,7 +189,7 @@ class TestStatusPagesAPIClient:
             "public": True,
             "monitors": ["mon_1", "mon_2"],
         }
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['statuspages']}/sp_abc").mock(
+        respx.get(f"{API_BASE}{Endpoint.STATUSPAGES}/sp_abc").mock(
             return_value=httpx.Response(200, json=mock_response)
         )
 
@@ -201,7 +201,7 @@ class TestStatusPagesAPIClient:
     @respx.mock
     def test_get_status_page_not_found(self, client: HyperpingClient) -> None:
         """Test getting a non-existent status page."""
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['statuspages']}/sp_nope").mock(
+        respx.get(f"{API_BASE}{Endpoint.STATUSPAGES}/sp_nope").mock(
             return_value=httpx.Response(404, json={"error": "Not found"})
         )
         with pytest.raises(HyperpingNotFoundError):
@@ -219,7 +219,7 @@ class TestStatusPagesAPIClient:
             "public": True,
             "monitors": ["mon_1"],
         }
-        respx.post(f"{HYPERPING_API_BASE}{API_PATHS['statuspages']}").mock(
+        respx.post(f"{API_BASE}{Endpoint.STATUSPAGES}").mock(
             return_value=httpx.Response(201, json=mock_response)
         )
 
@@ -236,7 +236,7 @@ class TestStatusPagesAPIClient:
     @respx.mock
     def test_create_status_page_validation_error(self, client: HyperpingClient) -> None:
         """Test creating a status page with invalid data."""
-        respx.post(f"{HYPERPING_API_BASE}{API_PATHS['statuspages']}").mock(
+        respx.post(f"{API_BASE}{Endpoint.STATUSPAGES}").mock(
             return_value=httpx.Response(
                 400,
                 json={
@@ -262,7 +262,7 @@ class TestStatusPagesAPIClient:
             "public": True,
             "monitors": [],
         }
-        respx.put(f"{HYPERPING_API_BASE}{API_PATHS['statuspages']}/sp_1").mock(
+        respx.put(f"{API_BASE}{Endpoint.STATUSPAGES}/sp_1").mock(
             return_value=httpx.Response(200, json=mock_response)
         )
 
@@ -272,7 +272,7 @@ class TestStatusPagesAPIClient:
     @respx.mock
     def test_update_status_page_not_found(self, client: HyperpingClient) -> None:
         """Test updating a non-existent status page."""
-        respx.put(f"{HYPERPING_API_BASE}{API_PATHS['statuspages']}/sp_nope").mock(
+        respx.put(f"{API_BASE}{Endpoint.STATUSPAGES}/sp_nope").mock(
             return_value=httpx.Response(404, json={"error": "Not found"})
         )
         with pytest.raises(HyperpingNotFoundError):
@@ -283,7 +283,7 @@ class TestStatusPagesAPIClient:
     @respx.mock
     def test_delete_status_page(self, client: HyperpingClient) -> None:
         """Test deleting a status page."""
-        respx.delete(f"{HYPERPING_API_BASE}{API_PATHS['statuspages']}/sp_del").mock(
+        respx.delete(f"{API_BASE}{Endpoint.STATUSPAGES}/sp_del").mock(
             return_value=httpx.Response(204)
         )
         client.delete_status_page("sp_del")  # Should not raise
@@ -291,7 +291,7 @@ class TestStatusPagesAPIClient:
     @respx.mock
     def test_delete_status_page_not_found(self, client: HyperpingClient) -> None:
         """Test deleting a non-existent status page."""
-        respx.delete(f"{HYPERPING_API_BASE}{API_PATHS['statuspages']}/sp_nope").mock(
+        respx.delete(f"{API_BASE}{Endpoint.STATUSPAGES}/sp_nope").mock(
             return_value=httpx.Response(404, json={"error": "Not found"})
         )
         with pytest.raises(HyperpingNotFoundError):
@@ -306,7 +306,7 @@ class TestStatusPagesAPIClient:
             {"id": "sub_1", "email": "alice@example.com"},
             {"id": "sub_2", "email": "bob@example.com"},
         ]
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['statuspages']}/sp_1/subscribers").mock(
+        respx.get(f"{API_BASE}{Endpoint.STATUSPAGES}/sp_1/subscribers").mock(
             return_value=httpx.Response(200, json=mock_response)
         )
 
@@ -318,7 +318,7 @@ class TestStatusPagesAPIClient:
     @respx.mock
     def test_list_subscribers_empty(self, client: HyperpingClient) -> None:
         """Test listing when there are no subscribers."""
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['statuspages']}/sp_1/subscribers").mock(
+        respx.get(f"{API_BASE}{Endpoint.STATUSPAGES}/sp_1/subscribers").mock(
             return_value=httpx.Response(200, json=[])
         )
         subs = client.list_subscribers("sp_1")
@@ -330,7 +330,7 @@ class TestStatusPagesAPIClient:
         mock_response = {
             "subscribers": [{"id": "sub_1", "email": "carol@example.com"}]
         }
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['statuspages']}/sp_1/subscribers").mock(
+        respx.get(f"{API_BASE}{Endpoint.STATUSPAGES}/sp_1/subscribers").mock(
             return_value=httpx.Response(200, json=mock_response)
         )
         subs = client.list_subscribers("sp_1")
@@ -340,7 +340,7 @@ class TestStatusPagesAPIClient:
     def test_list_subscribers_status_page_not_found(self, client: HyperpingClient) -> None:
         """Test listing subscribers when status page doesn't exist."""
         respx.get(
-            f"{HYPERPING_API_BASE}{API_PATHS['statuspages']}/sp_nope/subscribers"
+            f"{API_BASE}{Endpoint.STATUSPAGES}/sp_nope/subscribers"
         ).mock(return_value=httpx.Response(404, json={"error": "Not found"}))
         with pytest.raises(HyperpingNotFoundError):
             client.list_subscribers("sp_nope")
@@ -351,7 +351,7 @@ class TestStatusPagesAPIClient:
     def test_add_subscriber(self, client: HyperpingClient) -> None:
         """Test adding a subscriber to a status page."""
         mock_response = {"id": "sub_new", "email": "dave@example.com"}
-        respx.post(f"{HYPERPING_API_BASE}{API_PATHS['statuspages']}/sp_1/subscribers").mock(
+        respx.post(f"{API_BASE}{Endpoint.STATUSPAGES}/sp_1/subscribers").mock(
             return_value=httpx.Response(201, json=mock_response)
         )
 
@@ -359,15 +359,11 @@ class TestStatusPagesAPIClient:
         assert sub.id == "sub_new"
         assert sub.email == "dave@example.com"
 
-    @respx.mock
-    def test_add_subscriber_validation_error(self, client: HyperpingClient) -> None:
-        """Test adding a subscriber with invalid email."""
-        respx.post(f"{HYPERPING_API_BASE}{API_PATHS['statuspages']}/sp_1/subscribers").mock(
-            return_value=httpx.Response(
-                400, json={"error": "Invalid email", "details": []}
-            )
-        )
-        with pytest.raises(HyperpingValidationError):
+    def test_add_subscriber_invalid_email_raises_value_error(
+        self, client: HyperpingClient
+    ) -> None:
+        """Test adding a subscriber with an invalid email raises ValueError (M10)."""
+        with pytest.raises(ValueError, match="Invalid email"):
             client.add_subscriber("sp_1", "not-an-email")
 
     # ---- DELETE /v2/statuspages/{uuid}/subscribers/{id} ----
@@ -376,7 +372,7 @@ class TestStatusPagesAPIClient:
     def test_remove_subscriber(self, client: HyperpingClient) -> None:
         """Test removing a subscriber from a status page."""
         respx.delete(
-            f"{HYPERPING_API_BASE}{API_PATHS['statuspages']}/sp_1/subscribers/sub_1"
+            f"{API_BASE}{Endpoint.STATUSPAGES}/sp_1/subscribers/sub_1"
         ).mock(return_value=httpx.Response(204))
 
         client.remove_subscriber("sp_1", "sub_1")  # Should not raise
@@ -385,7 +381,7 @@ class TestStatusPagesAPIClient:
     def test_remove_subscriber_not_found(self, client: HyperpingClient) -> None:
         """Test removing a non-existent subscriber."""
         respx.delete(
-            f"{HYPERPING_API_BASE}{API_PATHS['statuspages']}/sp_1/subscribers/sub_nope"
+            f"{API_BASE}{Endpoint.STATUSPAGES}/sp_1/subscribers/sub_nope"
         ).mock(return_value=httpx.Response(404, json={"error": "Not found"}))
         with pytest.raises(HyperpingNotFoundError):
             client.remove_subscriber("sp_1", "sub_nope")

@@ -3,16 +3,19 @@
 from datetime import UTC, datetime
 
 import httpx
+import pytest
 import respx
 
-from hyperping import API_PATHS, HYPERPING_API_BASE
 from hyperping.client import HyperpingClient
+from hyperping.endpoints import API_BASE, Endpoint
+from hyperping.exceptions import HyperpingNotFoundError
 from hyperping.models import (
     AddIncidentUpdateRequest,
     Incident,
     IncidentCreate,
-    IncidentStatus,
     IncidentType,
+    IncidentUpdateRequest,
+    IncidentUpdateType,
     LocalizedText,
 )
 
@@ -85,11 +88,11 @@ class TestIncidentModels:
         """Test incident update model (v3 format)."""
         update = AddIncidentUpdateRequest(
             text=LocalizedText(en="Root cause identified"),
-            type=IncidentStatus.IDENTIFIED,
+            type=IncidentUpdateType.IDENTIFIED,
             date=datetime.now(UTC).isoformat(),
         )
         assert update.text.en == "Root cause identified"
-        assert update.type == IncidentStatus.IDENTIFIED
+        assert update.type == IncidentUpdateType.IDENTIFIED
 
 
 class TestIncidentAPIClient:
@@ -97,7 +100,7 @@ class TestIncidentAPIClient:
 
     @respx.mock
     def test_list_incidents(self, client: HyperpingClient) -> None:
-        """Test listing incidents."""
+        """Test listing incidents (M17: using Endpoint enum)."""
         mock_response = [
             {
                 "uuid": "inci_1",
@@ -127,7 +130,7 @@ class TestIncidentAPIClient:
                 ],
             },
         ]
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['incidents']}").mock(
+        respx.get(f"{API_BASE}{Endpoint.INCIDENTS}").mock(
             return_value=httpx.Response(200, json=mock_response)
         )
 
@@ -152,10 +155,10 @@ class TestIncidentAPIClient:
             "statuspages": ["sp_test"],
             "updates": [],
         }
-        respx.post(f"{HYPERPING_API_BASE}{API_PATHS['incidents']}").mock(
+        respx.post(f"{API_BASE}{Endpoint.INCIDENTS}").mock(
             return_value=httpx.Response(201, json=create_response)
         )
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['incidents']}/inci_new").mock(
+        respx.get(f"{API_BASE}{Endpoint.INCIDENTS}/inci_new").mock(
             return_value=httpx.Response(200, json=get_response)
         )
 
@@ -190,16 +193,16 @@ class TestIncidentAPIClient:
                 }
             ],
         }
-        respx.post(f"{HYPERPING_API_BASE}{API_PATHS['incidents']}/inci_updated/updates").mock(
+        respx.post(f"{API_BASE}{Endpoint.INCIDENTS}/inci_updated/updates").mock(
             return_value=httpx.Response(200, json={"message": "Update added"})
         )
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['incidents']}/inci_updated").mock(
+        respx.get(f"{API_BASE}{Endpoint.INCIDENTS}/inci_updated").mock(
             return_value=httpx.Response(200, json=full_incident)
         )
 
         update = AddIncidentUpdateRequest(
             text=LocalizedText(en="Root cause identified"),
-            type=IncidentStatus.IDENTIFIED,
+            type=IncidentUpdateType.IDENTIFIED,
             date=datetime.now(UTC).isoformat(),
         )
         updated = client.add_incident_update("inci_updated", update)
@@ -225,10 +228,10 @@ class TestIncidentAPIClient:
                 }
             ],
         }
-        respx.post(
-            f"{HYPERPING_API_BASE}{API_PATHS['incidents']}/inci_resolved/updates"
-        ).mock(return_value=httpx.Response(200, json={"message": "Updated"}))
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['incidents']}/inci_resolved").mock(
+        respx.post(f"{API_BASE}{Endpoint.INCIDENTS}/inci_resolved/updates").mock(
+            return_value=httpx.Response(200, json={"message": "Updated"})
+        )
+        respx.get(f"{API_BASE}{Endpoint.INCIDENTS}/inci_resolved").mock(
             return_value=httpx.Response(200, json=resolved_incident)
         )
 
@@ -238,7 +241,7 @@ class TestIncidentAPIClient:
     @respx.mock
     def test_delete_incident(self, client: HyperpingClient) -> None:
         """Test deleting an incident."""
-        respx.delete(f"{HYPERPING_API_BASE}{API_PATHS['incidents']}/inci_del").mock(
+        respx.delete(f"{API_BASE}{Endpoint.INCIDENTS}/inci_del").mock(
             return_value=httpx.Response(204)
         )
         client.delete_incident("inci_del")  # Should not raise
@@ -246,8 +249,48 @@ class TestIncidentAPIClient:
     @respx.mock
     def test_list_incidents_with_status_filter(self, client: HyperpingClient) -> None:
         """Test listing incidents with status filter."""
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['incidents']}").mock(
+        respx.get(f"{API_BASE}{Endpoint.INCIDENTS}").mock(
             return_value=httpx.Response(200, json=[])
         )
         incidents = client.list_incidents(status="investigating")
         assert incidents == []
+
+    # ==================== M21: update_incident coverage ====================
+
+    @respx.mock
+    def test_update_incident_changes_title(self, client: HyperpingClient) -> None:
+        """Test that update_incident sends a PUT and returns the updated incident (M21)."""
+        updated_response = {
+            "uuid": "inci_upd",
+            "date": "2024-01-15T10:00:00Z",
+            "title": {"en": "New Title"},
+            "text": {"en": "Body"},
+            "type": "incident",
+            "affectedComponents": [],
+            "statuspages": ["sp_1"],
+            "updates": [],
+        }
+        respx.put(f"{API_BASE}{Endpoint.INCIDENTS}/inci_upd").mock(
+            return_value=httpx.Response(200, json=updated_response)
+        )
+
+        result = client.update_incident(
+            "inci_upd",
+            IncidentUpdateRequest(title=LocalizedText(en="New Title")),
+        )
+
+        assert result.uuid == "inci_upd"
+        assert result.title.en == "New Title"
+
+    @respx.mock
+    def test_update_incident_not_found(self, client: HyperpingClient) -> None:
+        """Test that update_incident raises HyperpingNotFoundError on 404 (M21)."""
+        respx.put(f"{API_BASE}{Endpoint.INCIDENTS}/inci_missing").mock(
+            return_value=httpx.Response(404, json={"error": "Not found"})
+        )
+
+        with pytest.raises(HyperpingNotFoundError):
+            client.update_incident(
+                "inci_missing",
+                IncidentUpdateRequest(title=LocalizedText(en="Title")),
+            )

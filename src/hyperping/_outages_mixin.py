@@ -7,42 +7,36 @@ Provides methods for managing auto-detected outages (v2 API). Mixed into
 from __future__ import annotations
 
 import logging
-from typing import Any, cast
+from typing import Any
 
+from hyperping._protocols import _ClientProtocol
+from hyperping._utils import expect_dict, parse_list, validate_id
 from hyperping.endpoints import Endpoint
 from hyperping.exceptions import HyperpingNotFoundError
+from hyperping.models import Outage
 
 logger = logging.getLogger(__name__)
 
 
-class OutagesMixin:
+class OutagesMixin(_ClientProtocol):
     """Outage-related API operations."""
 
-    def _request(  # type: ignore[empty-body]
-        self,
-        method: str,
-        path: str,
-        json: dict[str, Any] | None = None,
-        params: dict[str, Any] | None = None,
-    ) -> dict[str, Any]: ...  # provided by HyperpingClient
-
-    def list_outages(self) -> list[dict[str, Any]]:
+    def list_outages(self) -> list[Outage]:
         """List auto-detected outages.
 
-        Returns raw dicts since the exact API response shape is not fully
-        documented. The command layer normalizes the response defensively.
-
         Returns:
-            List of outage dicts from the API.
+            List of :class:`~hyperping.models.Outage` objects.
             Empty list if the endpoint is not available (404).
         """
         try:
             data = self._request("GET", Endpoint.OUTAGES)
             if isinstance(data, list):
-                return data
-            if isinstance(data, dict) and "outages" in data:
-                return cast(list[dict[str, Any]], data["outages"])
-            return []
+                raw: list[Any] = data
+            elif isinstance(data, dict) and "outages" in data:
+                raw = data["outages"]
+            else:
+                return []
+            return parse_list(raw, Outage, "outage")
         except HyperpingNotFoundError:
             logger.debug("Outage endpoint not available (404)")
             return []
@@ -60,12 +54,14 @@ class OutagesMixin:
         Raises:
             HyperpingNotFoundError: If outage not found.
         """
+        validate_id(outage_id, "outage_id")  # H8
         json_body = {"message": message} if message else None
-        return self._request(
+        result = self._request(
             "POST",
             f"{Endpoint.OUTAGES}/{outage_id}/acknowledge",
             json=json_body,
         )
+        return expect_dict(result, "outage operation")
 
     def resolve_outage(self, outage_id: str, message: str | None = None) -> dict[str, Any]:
         """Resolve an outage.
@@ -80,12 +76,14 @@ class OutagesMixin:
         Raises:
             HyperpingNotFoundError: If outage not found.
         """
+        validate_id(outage_id, "outage_id")  # H8
         json_body = {"message": message} if message else None
-        return self._request(
+        result = self._request(
             "POST",
             f"{Endpoint.OUTAGES}/{outage_id}/resolve",
             json=json_body,
         )
+        return expect_dict(result, "outage operation")
 
     def escalate_outage(self, outage_id: str) -> dict[str, Any]:
         """Escalate an outage.
@@ -99,4 +97,6 @@ class OutagesMixin:
         Raises:
             HyperpingNotFoundError: If outage not found.
         """
-        return self._request("POST", f"{Endpoint.OUTAGES}/{outage_id}/escalate")
+        validate_id(outage_id, "outage_id")  # H8
+        result = self._request("POST", f"{Endpoint.OUTAGES}/{outage_id}/escalate")
+        return expect_dict(result, "outage operation")

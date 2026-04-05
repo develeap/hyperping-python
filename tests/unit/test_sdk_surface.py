@@ -312,16 +312,10 @@ class TestAllExports:
         "HyperpingNotFoundError",
         "HyperpingRateLimitError",
         "HyperpingValidationError",
-        # Endpoints
+        # Endpoints — public types only (H5: internal helpers removed from __all__)
         "API_BASE",
         "Endpoint",
         "APIVersion",
-        "EndpointConfig",
-        "ENDPOINTS",
-        "get_endpoint_url",
-        "get_version_for_endpoint",
-        "HYPERPING_API_BASE",
-        "API_PATHS",
         # Monitor models
         "Monitor",
         "MonitorCreate",
@@ -348,7 +342,7 @@ class TestAllExports:
         "IncidentUpdateType",
         "AddIncidentUpdateRequest",
         "LocalizedText",
-        # Legacy aliases
+        # Legacy aliases (H5/L3: accessible via __getattr__ + DeprecationWarning)
         "IncidentStatus",
         "IncidentUpdateCreate",
         # Maintenance models
@@ -360,12 +354,14 @@ class TestAllExports:
         "ReportPeriod",
         "OutageDetail",
         "OutageStats",
-        "APIErrorResponse",
+        # M6: APIErrorResponse is intentionally internal — not in __all__
         # Status Page models
         "StatusPage",
         "StatusPageCreate",
         "StatusPageUpdate",
         "StatusPageSubscriber",
+        # Outage models (C5)
+        "Outage",
     }
 
     def test_all_contains_expected_exports(self) -> None:
@@ -376,6 +372,20 @@ class TestAllExports:
     def test_all_entries_are_importable(self) -> None:
         for name in client_pkg.__all__:
             assert hasattr(client_pkg, name), f"{name} in __all__ but not importable"
+
+    def test_deprecated_symbols_still_accessible(self) -> None:
+        """H5/L3: removed from __all__ but still accessible with DeprecationWarning."""
+        import warnings
+
+        deprecated = ["HYPERPING_API_BASE", "API_PATHS", "IncidentStatus", "IncidentUpdateCreate"]
+        for name in deprecated:
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                val = getattr(client_pkg, name)
+                assert val is not None, f"{name} should be accessible"
+                assert any(issubclass(x.category, DeprecationWarning) for x in w), (
+                    f"{name} should emit DeprecationWarning"
+                )
 
 
 # ==================== Task 8: Client Lifecycle ====================
@@ -679,7 +689,7 @@ class TestOutageOperations:
         )
         outages = client.list_outages()
         assert len(outages) == 1
-        assert outages[0]["uuid"] == "out_1"
+        assert outages[0].uuid == "out_1"
 
     @respx.mock
     def test_list_outages_returns_empty_on_404(self, client: HyperpingClient) -> None:

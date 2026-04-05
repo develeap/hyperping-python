@@ -7,13 +7,22 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
+      # TODO H11: pin to full 40-char commit SHA
       - uses: actions/checkout@v4
+      # TODO H11: pin to full 40-char commit SHA
       - uses: astral-sh/setup-uv@v5
         with: { python-version: "3.12" }
       - run: uv sync --all-extras
+      # L5: audit before publishing
+      - name: Audit dependencies
+        continue-on-error: true
+        run: uv run pip-audit 2>/dev/null || uv audit
       - run: uv run pytest                    # gate — no publish on red tests
       - run: uv build
+      # TODO H11: pin to full 40-char commit SHA
       - uses: actions/upload-artifact@v4
         with: { name: dist, path: dist/ }
 
@@ -27,8 +36,10 @@ jobs:
     permissions:
       id-token: write
     steps:
+      # TODO H11: pin to full 40-char commit SHA
       - uses: actions/download-artifact@v4
         with: { name: dist, path: dist/ }
+      # TODO H11: pin to full 40-char commit SHA
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
@@ -43,6 +54,8 @@ jobs:
     permissions:
       id-token: write
     steps:
+      # TODO H11: pin to full 40-char commit SHA
       - uses: actions/download-artifact@v4
         with: { name: dist, path: dist/ }
+      # TODO H11: pin to full 40-char commit SHA
       - uses: pypa/gh-action-pypi-publish@release/v1
