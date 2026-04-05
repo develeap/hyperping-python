@@ -25,6 +25,11 @@ htmlcov/
 .vscode/
 .idea/
 
+# Secrets / environment
+.env
+.env.*
+.env.local
+
 # OS
 .DS_Store
 

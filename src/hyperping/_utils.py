@@ -117,7 +117,9 @@ def parse_list(
             results.append(model_cls.model_validate(item))  # type: ignore[attr-defined]
         except (ValueError, ValidationError) as exc:
             skipped += 1
-            logger.warning("Failed to parse %s data: %s", label, exc, extra={"data": item})
+            # Log only the exception, not the raw item - it may contain
+            # sensitive data (subscriber emails, custom auth headers).
+            logger.warning("Failed to parse %s data: %s", label, exc)
 
     if skipped:
         logger.warning(
