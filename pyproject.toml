@@ -9,7 +9,7 @@ description = "Python SDK for the Hyperping uptime monitoring and incident manag
 readme = {file = "README.md", content-type = "text/markdown"}
 license = {text = "MIT"}
 requires-python = ">=3.11"
-authors = [{ name = "Develeap", email = "dev@develeap.com" }]
+authors = [{ name = "Develeap", email = "khaled.salhab@develeap.com" }]
 keywords = ["hyperping", "monitoring", "uptime", "status-page", "incident", "api-client", "sdk", "python", "pydantic", "httpx"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
