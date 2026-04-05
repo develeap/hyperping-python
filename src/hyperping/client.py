@@ -1,20 +1,28 @@
 """Hyperping API client with retry logic and error handling.
 
 This module provides the main :class:`HyperpingClient` class along with
-configuration dataclasses for retry and circuit-breaker behavior.
+configuration dataclasses for retry behavior.
+
+Circuit-breaker types (``CircuitBreaker``, ``CircuitBreakerConfig``,
+``CircuitState``, ``DEFAULT_CIRCUIT_BREAKER_CONFIG``) are defined in
+:mod:`hyperping._circuit_breaker` and re-exported here for backward compat.
 """
 
 import logging
 import random
-import threading
 import time
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import Any
 
 import httpx
 from pydantic import SecretStr
 
+from hyperping._circuit_breaker import (
+    CircuitBreaker,
+    CircuitBreakerConfig,
+    CircuitState,
+    DEFAULT_CIRCUIT_BREAKER_CONFIG,
+)
 from hyperping._incidents_mixin import IncidentsMixin
 from hyperping._maintenance_mixin import MaintenanceMixin
 from hyperping._monitors_mixin import MonitorsMixin
@@ -36,6 +44,11 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_USER_AGENT = f"hyperping-python/{__version__}"
 
+# Known JSON body keys whose values must not appear in debug logs (M15)
+_SENSITIVE_LOG_KEYS = frozenset(
+    {"authorization", "x-api-key", "api_key", "request_headers", "request_body"}
+)
+
 
 @dataclass(frozen=True)
 class RetryConfig:
@@ -49,112 +62,24 @@ class RetryConfig:
 
 
 DEFAULT_RETRY_CONFIG = RetryConfig()
+# intentionally internal — not in __all__; exported from _circuit_breaker counterpart
+# DEFAULT_CIRCUIT_BREAKER_CONFIG is exported from _circuit_breaker (M7)
 
-# Maximum time to honor a server-requested Retry-After value (5 minutes)
+# Maximum time to honour a server-requested Retry-After value (5 minutes)
 _RETRY_AFTER_MAX = 300.0
 
 
-class CircuitState(StrEnum):
-    """Circuit breaker states."""
+def _sanitize_for_log(data: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Return a copy of *data* with sensitive values replaced by ``[REDACTED]``.
 
-    CLOSED = "closed"  # Normal: requests flow through
-    OPEN = "open"  # Failing: requests fail fast
-    HALF_OPEN = "half_open"  # Testing: one request allowed through
-
-
-@dataclass(frozen=True)
-class CircuitBreakerConfig:
-    """Configuration for circuit breaker behavior."""
-
-    failure_threshold: int = 5
-    recovery_timeout: float = 60.0
-    half_open_max_calls: int = 1
-
-
-DEFAULT_CIRCUIT_BREAKER_CONFIG = CircuitBreakerConfig()
-
-
-class CircuitBreaker:
-    """Circuit breaker pattern for API calls.
-
-    States:
-        CLOSED → normal operation
-        OPEN → fail fast, no API calls made
-        HALF_OPEN → allow one trial call; success → CLOSED, failure → OPEN
+    Prevents tokens and header values from leaking into DEBUG-level log output.
     """
-
-    def __init__(self, config: CircuitBreakerConfig | None = None) -> None:
-        """Initialize the circuit breaker.
-
-        Args:
-            config: Circuit breaker configuration. Uses defaults if ``None``.
-        """
-        self._config = config or DEFAULT_CIRCUIT_BREAKER_CONFIG
-        self._state = CircuitState.CLOSED
-        self._failure_count = 0
-        self._half_open_calls: int = 0
-        self._last_failure_time: float | None = None
-        self._lock = threading.Lock()
-
-    @property
-    def state(self) -> str:
-        """Return the current circuit state."""
-        return self._state
-
-    @property
-    def failure_count(self) -> int:
-        """Return the current consecutive failure count."""
-        return self._failure_count
-
-    def call_allowed(self) -> bool:
-        """Check whether a new call is permitted under current state.
-
-        Returns:
-            ``True`` if a request may proceed, ``False`` if the circuit is open.
-        """
-        with self._lock:
-            if self._state == CircuitState.CLOSED:
-                return True
-            if self._state == CircuitState.OPEN:
-                if self._last_failure_time is not None:
-                    elapsed = time.time() - self._last_failure_time
-                    if elapsed >= self._config.recovery_timeout:
-                        self._state = CircuitState.HALF_OPEN
-                        logger.info("Circuit breaker: OPEN → HALF_OPEN (trial call allowed)")
-                        return True
-                return False
-            # HALF_OPEN: allow only up to half_open_max_calls trial requests
-            if self._half_open_calls < self._config.half_open_max_calls:
-                self._half_open_calls += 1
-                return True
-            return False
-
-    def record_success(self) -> None:
-        """Record a successful call — reset to CLOSED."""
-        with self._lock:
-            self._half_open_calls = 0
-            if self._state != CircuitState.CLOSED:
-                logger.info(
-                    f"Circuit breaker: {self._state} → CLOSED (recovered after "
-                    f"{self._failure_count} failures)"
-                )
-            self._state = CircuitState.CLOSED
-            self._failure_count = 0
-            self._last_failure_time = None
-
-    def record_failure(self) -> None:
-        """Record a failed call — may open the circuit."""
-        with self._lock:
-            self._half_open_calls = 0
-            self._failure_count += 1
-            self._last_failure_time = time.time()
-            if self._failure_count >= self._config.failure_threshold:
-                if self._state != CircuitState.OPEN:
-                    logger.warning(
-                        f"Circuit breaker: {self._state} → OPEN "
-                        f"(threshold {self._config.failure_threshold} reached)"
-                    )
-                self._state = CircuitState.OPEN
+    if data is None:
+        return None
+    return {
+        k: "[REDACTED]" if k.lower() in _SENSITIVE_LOG_KEYS else v
+        for k, v in data.items()
+    }
 
 
 class HyperpingClient(
@@ -191,8 +116,8 @@ class HyperpingClient(
             base_url: Override the default API base URL
                 (``https://api.hyperping.io``).
             timeout: HTTP request timeout in seconds.
-            retry_config: Retry behavior configuration. Pass ``None`` for defaults
-                (3 retries, exponential backoff).
+            retry_config: Retry behaviour configuration. Pass ``None`` for
+                defaults (3 retries, exponential backoff).
             circuit_breaker_config: Circuit breaker configuration. Pass ``None``
                 for defaults (5-failure threshold, 60 s recovery).
             user_agent: Custom ``User-Agent`` header value. Defaults to
@@ -233,6 +158,36 @@ class HyperpingClient(
         """Access the circuit breaker state (for monitoring)."""
         return self._circuit_breaker
 
+    # ==================== Error Handling ====================
+
+    def _parse_error_body(self, response: httpx.Response) -> dict[str, Any]:
+        """Parse the JSON body from an error response.
+
+        Falls back to a plain-text envelope when the body is not valid JSON.
+        Note: the returned dict may be attached to exception objects and
+        forwarded to caller observability stacks. For :class:`HyperpingAuthError`
+        specifically, ``response_body`` is omitted to prevent credential leakage
+        through tracing/logging pipelines (H10).
+        """
+        try:
+            return response.json()  # type: ignore[no-any-return]
+        except (ValueError, httpx.DecodingError):  # H9: narrow bare except
+            return {"error": response.text or "Unknown error"}
+
+    def _parse_retry_after(self, response: httpx.Response) -> int | None:
+        """Extract and parse the ``Retry-After`` header value.
+
+        Returns:
+            Integer seconds, or ``None`` if the header is absent or non-numeric.
+        """
+        retry_after = response.headers.get("Retry-After")
+        if not retry_after:
+            return None
+        try:
+            return int(retry_after)
+        except ValueError:
+            return None
+
     def _handle_response_error(self, response: httpx.Response) -> None:
         """Map HTTP errors to typed exceptions.
 
@@ -251,44 +206,33 @@ class HyperpingClient(
         """
         status = response.status_code
         request_id = response.headers.get("x-request-id")
-
-        try:
-            body = response.json()
-        except Exception:
-            body = {"error": response.text or "Unknown error"}
-
+        body = self._parse_error_body(response)
         error_msg = body.get("error") or body.get("message") or f"HTTP {status}"
 
-        if status == 401 or status == 403:
+        if status in (401, 403):
+            # H10: omit response_body for auth errors to prevent credential leakage
             raise HyperpingAuthError(
                 message=f"Authentication failed: {error_msg}",
                 status_code=status,
-                response_body=body,
+                response_body=None,
                 request_id=request_id,
             )
-        elif status == 404:
+        if status == 404:
             raise HyperpingNotFoundError(
                 message=f"Resource not found: {error_msg}",
                 status_code=status,
                 response_body=body,
                 request_id=request_id,
             )
-        elif status == 429:
-            retry_after = response.headers.get("Retry-After")
-            retry_after_seconds: int | None = None
-            if retry_after:
-                try:
-                    retry_after_seconds = int(retry_after)
-                except ValueError:
-                    retry_after_seconds = None
+        if status == 429:
             raise HyperpingRateLimitError(
                 message=f"Rate limit exceeded: {error_msg}",
                 status_code=status,
                 response_body=body,
-                retry_after=retry_after_seconds,
+                retry_after=self._parse_retry_after(response),
                 request_id=request_id,
             )
-        elif status == 400 or status == 422:
+        if status in (400, 422):
             raise HyperpingValidationError(
                 message=f"Validation error: {error_msg}",
                 status_code=status,
@@ -296,13 +240,53 @@ class HyperpingClient(
                 validation_errors=body.get("details") or body.get("errors"),
                 request_id=request_id,
             )
-        else:
-            raise HyperpingAPIError(
-                message=f"API error: {error_msg}",
-                status_code=status,
-                response_body=body,
-                request_id=request_id,
-            )
+        raise HyperpingAPIError(
+            message=f"API error: {error_msg}",
+            status_code=status,
+            response_body=body,
+            request_id=request_id,
+        )
+
+    # ==================== Request Helpers ====================
+
+    def _compute_sleep_time(
+        self,
+        response: httpx.Response,
+        delay: float,
+    ) -> float:
+        """Compute how long to sleep before retrying a failed request (C2).
+
+        For 429 responses the server-provided ``Retry-After`` value is used
+        (capped at :data:`_RETRY_AFTER_MAX`). For all other retryable statuses,
+        exponential backoff with ±25% jitter is applied.
+
+        Args:
+            response: The HTTP response that triggered the retry.
+            delay: Current base delay from the exponential backoff ladder.
+
+        Returns:
+            Seconds to sleep before the next attempt.
+        """
+        if response.status_code == 429:
+            retry_after = response.headers.get("Retry-After")
+            if retry_after:
+                return min(float(retry_after), _RETRY_AFTER_MAX)
+        return delay + random.uniform(0, delay * 0.25)
+
+    def _should_retry(self, status_code: int, attempt: int) -> bool:
+        """Return True if this status/attempt combination warrants a retry (C2).
+
+        Args:
+            status_code: HTTP status code of the current response.
+            attempt: Zero-based attempt index (0 = first attempt).
+
+        Returns:
+            ``True`` when the status is retryable and retries remain.
+        """
+        return (
+            status_code in self.retry_config.retry_on_status
+            and attempt < self.retry_config.max_retries
+        )
 
     def _execute_single_attempt(
         self,
@@ -310,20 +294,25 @@ class HyperpingClient(
         path: str,
         json: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
-    ) -> dict[str, Any] | httpx.Response:
+    ) -> dict[str, Any] | list[dict[str, Any]] | httpx.Response:
         """Execute a single HTTP request attempt.
 
-        Returns the parsed response dict on success, or the raw Response
-        object when the status code indicates a retryable/non-retryable error
-        (caller decides whether to retry).
+        Returns the parsed response on success, or the raw Response object when
+        the status code indicates a retryable or non-retryable error (caller
+        decides whether to retry).
 
         Raises:
-            httpx.TimeoutException: On request timeout
-            httpx.RequestError: On connection/transport errors
+            httpx.TimeoutException: On request timeout.
+            httpx.RequestError: On connection/transport errors.
         """
         logger.debug(
-            f"API request: {method} {path} (attempt)",
-            extra={"json": json, "params": params},
+            "API request: %s %s (attempt)",
+            method,
+            path,
+            extra={
+                "json": _sanitize_for_log(json),  # M15: redact sensitive fields
+                "params": _sanitize_for_log(params),
+            },
         )
 
         response = self._client.request(method=method, url=path, json=json, params=params)
@@ -335,7 +324,7 @@ class HyperpingClient(
         self._circuit_breaker.record_success()
         if response.status_code == 204:
             return {}
-        return response.json()  # type: ignore[no-any-return]  # list endpoints return arrays; callers use isinstance checks
+        return response.json()  # type: ignore[no-any-return]
 
     def _request(
         self,
@@ -343,7 +332,7 @@ class HyperpingClient(
         path: str,
         json: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | list[dict[str, Any]]:  # H1: accurate return type
         """Make an HTTP request with retry logic.
 
         Args:
@@ -353,7 +342,7 @@ class HyperpingClient(
             params: Query parameters
 
         Returns:
-            Response body as dict
+            Response body as dict or list (list endpoints return arrays)
 
         Raises:
             HyperpingAPIError: On API errors after retries exhausted
@@ -362,7 +351,7 @@ class HyperpingClient(
             raise HyperpingAPIError(
                 f"Circuit breaker OPEN — API calls suspended. "
                 f"Consecutive failures: {self._circuit_breaker.failure_count}. "
-                f"Will retry after {self.retry_config.initial_delay}s."
+                f"Will recover after {self._circuit_breaker.recovery_timeout}s."  # L7: correct field
             )
 
         last_exception: Exception | None = None
@@ -377,20 +366,14 @@ class HyperpingClient(
                     return result
 
                 response = result
-                if (
-                    response.status_code in self.retry_config.retry_on_status
-                    and attempt < self.retry_config.max_retries
-                ):
-                    if response.status_code == 429:
-                        retry_after = response.headers.get("Retry-After")
-                        if retry_after:
-                            delay = min(float(retry_after), _RETRY_AFTER_MAX)
-                    sleep_time = delay
-                    if response.status_code != 429:
-                        sleep_time = delay + random.uniform(0, delay * 0.25)
+                if self._should_retry(response.status_code, attempt):
+                    sleep_time = self._compute_sleep_time(response, delay)
                     logger.warning(
-                        f"Retrying after {sleep_time:.2f}s due to {response.status_code} "
-                        f"(attempt {attempt + 1}/{max_attempts})"
+                        "Retrying after %.2fs due to %d (attempt %d/%d)",
+                        sleep_time,
+                        response.status_code,
+                        attempt + 1,
+                        max_attempts,
                     )
                     time.sleep(sleep_time)
                     delay = min(
@@ -410,8 +393,11 @@ class HyperpingClient(
                     label = "timeout" if isinstance(e, httpx.TimeoutException) else str(e)
                     sleep_time = delay + random.uniform(0, delay * 0.25)
                     logger.warning(
-                        f"Request {label}, retrying after {sleep_time:.2f}s "
-                        f"(attempt {attempt + 1}/{max_attempts})"
+                        "Request %s, retrying after %.2fs (attempt %d/%d)",
+                        label,
+                        sleep_time,
+                        attempt + 1,
+                        max_attempts,
                     )
                     time.sleep(sleep_time)
                     delay = min(
@@ -436,6 +422,13 @@ class HyperpingClient(
     def ping(self) -> bool:
         """Test API connectivity and authentication.
 
+        Makes a lightweight call to the monitors list endpoint to verify
+        that the API key is valid and the Hyperping API is reachable.
+
+        Note: This fetches the full monitor list and discards the result.
+        If a dedicated ``/health`` endpoint becomes available in the Hyperping
+        API it should be preferred here to reduce unnecessary data transfer (M8).
+
         Returns:
             True if connection successful
 
@@ -450,3 +443,15 @@ class HyperpingClient(
             raise
         except (HyperpingAPIError, httpx.RequestError, httpx.TimeoutException) as e:
             raise HyperpingAPIError(f"API connectivity test failed: {e}") from e
+
+
+# Re-export circuit-breaker types for backward compatibility (M16)
+__all__ = [
+    "RetryConfig",
+    "DEFAULT_RETRY_CONFIG",
+    "CircuitState",
+    "CircuitBreakerConfig",
+    "DEFAULT_CIRCUIT_BREAKER_CONFIG",
+    "CircuitBreaker",
+    "HyperpingClient",
+]

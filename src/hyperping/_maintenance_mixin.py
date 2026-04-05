@@ -8,10 +8,9 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
-from typing import Any
 
-from pydantic import ValidationError
-
+from hyperping._protocols import _ClientProtocol
+from hyperping._utils import parse_list, unwrap_list, validate_id
 from hyperping.endpoints import Endpoint
 from hyperping.models import (
     Maintenance,
@@ -22,16 +21,8 @@ from hyperping.models import (
 logger = logging.getLogger(__name__)
 
 
-class MaintenanceMixin:
+class MaintenanceMixin(_ClientProtocol):
     """Maintenance-related API operations."""
-
-    def _request(  # type: ignore[empty-body]
-        self,
-        method: str,
-        path: str,
-        json: dict[str, Any] | None = None,
-        params: dict[str, Any] | None = None,
-    ) -> dict[str, Any]: ...  # provided by HyperpingClient
 
     def list_maintenance(self, status: str | None = None) -> list[Maintenance]:
         """List all maintenance windows.
@@ -51,35 +42,16 @@ class MaintenanceMixin:
         if status:
             params["status"] = status
 
-        response = self._request("GET", Endpoint.MAINTENANCE, params=params if params else None)
+        response = self._request(
+            "GET", Endpoint.MAINTENANCE, params=params or None  # M20
+        )
 
-        # Handle different response formats
         # API returns {"maintenanceWindows": [...]} as of current version
-        if isinstance(response, list):
-            maintenance_data = response
-        elif "maintenanceWindows" in response:
-            maintenance_data = response["maintenanceWindows"]
-        elif "maintenance" in response:
-            maintenance_data = response["maintenance"]
-        else:
-            maintenance_data = response.get("data", [])
+        raw = unwrap_list(response, "maintenanceWindows")
+        if not raw and isinstance(response, dict) and "maintenance" in response:
+            raw = response["maintenance"]
 
-        windows = []
-        skipped = 0
-        for data in maintenance_data:
-            try:
-                windows.append(Maintenance.model_validate(data))
-            except (ValueError, ValidationError) as e:
-                skipped += 1
-                logger.warning(f"Failed to parse maintenance data: {e}", extra={"data": data})
-
-        if skipped:
-            logger.warning(
-                f"{skipped} of {len(maintenance_data)} maintenance windows "
-                "could not be parsed and were skipped"
-            )
-
-        return windows
+        return parse_list(raw, Maintenance, "maintenance window")
 
     def get_maintenance(self, maintenance_id: str) -> Maintenance:
         """Get a single maintenance window by ID.
@@ -93,7 +65,9 @@ class MaintenanceMixin:
         Raises:
             HyperpingNotFoundError: If maintenance not found
         """
+        validate_id(maintenance_id, "maintenance_id")  # H8
         response = self._request("GET", f"{Endpoint.MAINTENANCE}/{maintenance_id}")
+        assert isinstance(response, dict)
         return Maintenance.model_validate(response)
 
     def create_maintenance(self, maintenance: MaintenanceCreate) -> Maintenance:
@@ -115,6 +89,7 @@ class MaintenanceMixin:
         """
         payload = maintenance.model_dump(exclude_none=True, by_alias=True, mode="json")
         response = self._request("POST", Endpoint.MAINTENANCE, json=payload)
+        assert isinstance(response, dict)
         # v1 API returns minimal response with just uuid
         if "uuid" in response and "name" not in response:
             # Fetch the full maintenance after creation
@@ -125,19 +100,27 @@ class MaintenanceMixin:
         self,
         maintenance_id: str,
         update: MaintenanceUpdate,
+        raise_on_conflict: bool = False,
     ) -> Maintenance:
         """Update an existing maintenance window.
 
         The v1 API PUT requires a full payload (partial updates return 401).
         We fetch the current state and merge the supplied fields before sending.
 
+        Concurrency note: this method performs a non-atomic read-modify-write.
+        If two callers update the same window concurrently, the later write
+        silently wins. ``raise_on_conflict`` is reserved for future ETag-based
+        optimistic locking and has no effect today (H6).
+
         Args:
             maintenance_id: Maintenance ID
             update: Fields to update (only non-None fields are applied)
+            raise_on_conflict: Reserved for future ETag support (no-op today).
 
         Returns:
             Updated Maintenance object
         """
+        validate_id(maintenance_id, "maintenance_id")  # H8
         current = self.get_maintenance(maintenance_id)
         partial = update.model_dump(exclude_none=True, by_alias=True, mode="json")
 
@@ -149,7 +132,10 @@ class MaintenanceMixin:
         }
         payload.update(partial)
 
-        response = self._request("PUT", f"{Endpoint.MAINTENANCE}/{maintenance_id}", json=payload)
+        response = self._request(
+            "PUT", f"{Endpoint.MAINTENANCE}/{maintenance_id}", json=payload
+        )
+        assert isinstance(response, dict)
         return Maintenance.model_validate(response)
 
     def delete_maintenance(self, maintenance_id: str) -> None:
@@ -161,6 +147,7 @@ class MaintenanceMixin:
         Raises:
             HyperpingNotFoundError: If maintenance not found
         """
+        validate_id(maintenance_id, "maintenance_id")  # H8
         self._request("DELETE", f"{Endpoint.MAINTENANCE}/{maintenance_id}")
 
     def get_active_maintenance(self) -> list[Maintenance]:

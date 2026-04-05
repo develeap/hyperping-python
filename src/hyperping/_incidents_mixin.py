@@ -8,34 +8,24 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
-from typing import Any
 
-from pydantic import ValidationError
-
+from hyperping._protocols import _ClientProtocol
+from hyperping._utils import parse_list, unwrap_list, validate_id
 from hyperping.endpoints import Endpoint
 from hyperping.models import (
-    AddIncidentUpdateRequest,
+    AddIncidentUpdateRequest,  # canonical name (M18)
     Incident,
     IncidentCreate,
-    IncidentStatus,
-    IncidentUpdateCreate,
     IncidentUpdateRequest,
+    IncidentUpdateType,  # canonical name (M18)
     LocalizedText,
 )
 
 logger = logging.getLogger(__name__)
 
 
-class IncidentsMixin:
+class IncidentsMixin(_ClientProtocol):
     """Incident-related API operations."""
-
-    def _request(  # type: ignore[empty-body]
-        self,
-        method: str,
-        path: str,
-        json: dict[str, Any] | None = None,
-        params: dict[str, Any] | None = None,
-    ) -> dict[str, Any]: ...  # provided by HyperpingClient
 
     def list_incidents(self, status: str | None = None) -> list[Incident]:
         """List all incidents.
@@ -56,31 +46,10 @@ class IncidentsMixin:
         if status:
             params["status"] = status
 
-        response = self._request("GET", Endpoint.INCIDENTS, params=params if params else None)
-
-        # Handle different response formats
-        if isinstance(response, list):
-            incidents_data = response
-        elif "incidents" in response:
-            incidents_data = response["incidents"]
-        else:
-            incidents_data = response.get("data", [])
-
-        incidents = []
-        skipped = 0
-        for data in incidents_data:
-            try:
-                incidents.append(Incident.model_validate(data))
-            except (ValueError, ValidationError) as e:
-                skipped += 1
-                logger.warning(f"Failed to parse incident data: {e}", extra={"data": data})
-
-        if skipped:
-            logger.warning(
-                f"{skipped} of {len(incidents_data)} incidents could not be parsed and were skipped"
-            )
-
-        return incidents
+        response = self._request(
+            "GET", Endpoint.INCIDENTS, params=params or None  # M20
+        )
+        return parse_list(unwrap_list(response, "incidents"), Incident, "incident")
 
     def get_incident(self, incident_id: str) -> Incident:
         """Get a single incident by ID.
@@ -94,7 +63,9 @@ class IncidentsMixin:
         Raises:
             HyperpingNotFoundError: If incident not found
         """
+        validate_id(incident_id, "incident_id")  # H8
         response = self._request("GET", f"{Endpoint.INCIDENTS}/{incident_id}")
+        assert isinstance(response, dict)
         return Incident.model_validate(response)
 
     def create_incident(self, incident: IncidentCreate) -> Incident:
@@ -116,13 +87,18 @@ class IncidentsMixin:
         """
         payload = incident.model_dump(exclude_none=True, by_alias=True, mode="json")
         response = self._request("POST", Endpoint.INCIDENTS, json=payload)
+        assert isinstance(response, dict)
         # v3 API returns minimal response with just uuid
         if "uuid" in response and "title" not in response:
             # Fetch the full incident after creation
             return self.get_incident(response["uuid"])
         return Incident.model_validate(response)
 
-    def update_incident(self, incident_id: str, update: IncidentUpdateRequest) -> Incident:
+    def update_incident(
+        self,
+        incident_id: str,
+        update: IncidentUpdateRequest,
+    ) -> Incident:
         """Update an existing incident.
 
         Args:
@@ -137,14 +113,18 @@ class IncidentsMixin:
             HyperpingValidationError: If the payload fails server-side validation.
             HyperpingAPIError: On unexpected API errors.
         """
+        validate_id(incident_id, "incident_id")  # H8
         payload = update.model_dump(exclude_none=True, by_alias=True)
-        response = self._request("PUT", f"{Endpoint.INCIDENTS}/{incident_id}", json=payload)
+        response = self._request(
+            "PUT", f"{Endpoint.INCIDENTS}/{incident_id}", json=payload
+        )
+        assert isinstance(response, dict)
         return Incident.model_validate(response)
 
     def add_incident_update(
         self,
         incident_id: str,
-        update: IncidentUpdateCreate,
+        update: AddIncidentUpdateRequest,
     ) -> Incident:
         """Add an update to an incident.
 
@@ -159,6 +139,7 @@ class IncidentsMixin:
             HyperpingNotFoundError: If the incident does not exist.
             HyperpingAPIError: On unexpected API errors.
         """
+        validate_id(incident_id, "incident_id")  # H8
         payload = update.model_dump(exclude_none=True, by_alias=True)
         url = f"{Endpoint.INCIDENTS}/{incident_id}/updates"
         self._request("POST", url, json=payload)  # Returns {"message": "..."} — not a full Incident
@@ -181,7 +162,7 @@ class IncidentsMixin:
         """
         update = AddIncidentUpdateRequest(
             text=LocalizedText(en=message or "This incident has been resolved."),
-            type=IncidentStatus.RESOLVED,
+            type=IncidentUpdateType.RESOLVED,
             date=datetime.now(UTC).isoformat(),
         )
         return self.add_incident_update(incident_id, update)
@@ -195,4 +176,5 @@ class IncidentsMixin:
         Raises:
             HyperpingNotFoundError: If incident not found
         """
+        validate_id(incident_id, "incident_id")  # H8
         self._request("DELETE", f"{Endpoint.INCIDENTS}/{incident_id}")

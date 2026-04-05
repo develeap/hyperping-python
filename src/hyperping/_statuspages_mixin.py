@@ -7,10 +7,10 @@ Provides CRUD and subscriber methods for Hyperping status pages (v2 API). Mixed 
 from __future__ import annotations
 
 import logging
-from typing import Any
+import re
 
-from pydantic import ValidationError
-
+from hyperping._protocols import _ClientProtocol
+from hyperping._utils import parse_list, unwrap_list, validate_id
 from hyperping.endpoints import Endpoint
 from hyperping.models import (
     StatusPage,
@@ -21,17 +21,12 @@ from hyperping.models import (
 
 logger = logging.getLogger(__name__)
 
+# Simple RFC-5322-inspired pattern for email validation (M10)
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
-class StatusPagesMixin:
+
+class StatusPagesMixin(_ClientProtocol):
     """Status page-related API operations."""
-
-    def _request(  # type: ignore[empty-body]
-        self,
-        method: str,
-        path: str,
-        json: dict[str, Any] | None = None,
-        params: dict[str, Any] | None = None,
-    ) -> dict[str, Any]: ...  # provided by HyperpingClient
 
     def list_status_pages(self, search: str | None = None) -> list[StatusPage]:
         """List all status pages.
@@ -47,38 +42,16 @@ class StatusPagesMixin:
             HyperpingAuthError: If the API key is invalid.
             HyperpingAPIError: On unexpected API errors.
         """
-        query_params: dict[str, Any] = {}
+        query_params: dict[str, str] = {}
         if search:
             query_params["search"] = search
 
         response = self._request(
             "GET",
             Endpoint.STATUSPAGES,
-            params=query_params if query_params else None,
+            params=query_params or None,
         )
-
-        if isinstance(response, list):
-            pages_data = response
-        elif "statuspages" in response:
-            pages_data = response["statuspages"]
-        else:
-            pages_data = response.get("data", [])
-
-        pages = []
-        skipped = 0
-        for data in pages_data:
-            try:
-                pages.append(StatusPage.model_validate(data))
-            except (ValueError, ValidationError) as e:
-                skipped += 1
-                logger.warning(f"Failed to parse status page data: {e}", extra={"data": data})
-
-        if skipped:
-            logger.warning(
-                f"{skipped} of {len(pages_data)} status pages could not be parsed and were skipped"
-            )
-
-        return pages
+        return parse_list(unwrap_list(response, "statuspages"), StatusPage, "status page")
 
     def get_status_page(self, status_page_id: str) -> StatusPage:
         """Get a single status page by ID.
@@ -92,7 +65,9 @@ class StatusPagesMixin:
         Raises:
             HyperpingNotFoundError: If status page not found.
         """
+        validate_id(status_page_id, "status_page_id")  # H8
         response = self._request("GET", f"{Endpoint.STATUSPAGES}/{status_page_id}")
+        assert isinstance(response, dict)
         return StatusPage.model_validate(response)
 
     def create_status_page(self, status_page: StatusPageCreate) -> StatusPage:
@@ -110,6 +85,7 @@ class StatusPagesMixin:
         """
         payload = status_page.model_dump(exclude_none=True, by_alias=True)
         response = self._request("POST", Endpoint.STATUSPAGES, json=payload)
+        assert isinstance(response, dict)
         return StatusPage.model_validate(response)
 
     def update_status_page(
@@ -131,8 +107,12 @@ class StatusPagesMixin:
             HyperpingValidationError: If the payload fails server-side validation.
             HyperpingAPIError: On unexpected API errors.
         """
+        validate_id(status_page_id, "status_page_id")  # H8
         payload = update.model_dump(exclude_none=True, by_alias=True)
-        response = self._request("PUT", f"{Endpoint.STATUSPAGES}/{status_page_id}", json=payload)
+        response = self._request(
+            "PUT", f"{Endpoint.STATUSPAGES}/{status_page_id}", json=payload
+        )
+        assert isinstance(response, dict)
         return StatusPage.model_validate(response)
 
     def delete_status_page(self, status_page_id: str) -> None:
@@ -144,6 +124,7 @@ class StatusPagesMixin:
         Raises:
             HyperpingNotFoundError: If status page not found.
         """
+        validate_id(status_page_id, "status_page_id")  # H8
         self._request("DELETE", f"{Endpoint.STATUSPAGES}/{status_page_id}")
 
     def list_subscribers(self, status_page_id: str) -> list[StatusPageSubscriber]:
@@ -159,33 +140,13 @@ class StatusPagesMixin:
             HyperpingNotFoundError: If status page not found.
             HyperpingAPIError: On unexpected API errors.
         """
+        validate_id(status_page_id, "status_page_id")  # H8
         response = self._request(
             "GET", f"{Endpoint.STATUSPAGES}/{status_page_id}/subscribers"
         )
-
-        if isinstance(response, list):
-            subscribers_data = response
-        elif "subscribers" in response:
-            subscribers_data = response["subscribers"]
-        else:
-            subscribers_data = response.get("data", [])
-
-        subscribers = []
-        skipped = 0
-        for data in subscribers_data:
-            try:
-                subscribers.append(StatusPageSubscriber.model_validate(data))
-            except (ValueError, ValidationError) as e:
-                skipped += 1
-                logger.warning(f"Failed to parse subscriber data: {e}", extra={"data": data})
-
-        if skipped:
-            logger.warning(
-                f"{skipped} of {len(subscribers_data)} subscribers could not be parsed "
-                "and were skipped"
-            )
-
-        return subscribers
+        return parse_list(
+            unwrap_list(response, "subscribers"), StatusPageSubscriber, "subscriber"
+        )
 
     def add_subscriber(self, status_page_id: str, email: str) -> StatusPageSubscriber:
         """Add a subscriber to a status page.
@@ -198,16 +159,21 @@ class StatusPagesMixin:
             Created :class:`StatusPageSubscriber` object.
 
         Raises:
+            ValueError: If *email* does not look like a valid email address (M10).
             HyperpingNotFoundError: If status page not found.
-            HyperpingValidationError: If the email is invalid.
+            HyperpingValidationError: If the email is rejected by the API.
             HyperpingAPIError: On unexpected API errors.
         """
+        validate_id(status_page_id, "status_page_id")  # H8
+        if not _EMAIL_RE.match(email):
+            raise ValueError(f"Invalid email address: {email!r}")
         payload = {"email": email}
         response = self._request(
             "POST",
             f"{Endpoint.STATUSPAGES}/{status_page_id}/subscribers",
             json=payload,
         )
+        assert isinstance(response, dict)
         return StatusPageSubscriber.model_validate(response)
 
     def remove_subscriber(self, status_page_id: str, subscriber_id: str) -> None:
@@ -220,6 +186,8 @@ class StatusPagesMixin:
         Raises:
             HyperpingNotFoundError: If status page or subscriber not found.
         """
+        validate_id(status_page_id, "status_page_id")  # H8
+        validate_id(subscriber_id, "subscriber_id")  # H8
         self._request(
             "DELETE",
             f"{Endpoint.STATUSPAGES}/{status_page_id}/subscribers/{subscriber_id}",

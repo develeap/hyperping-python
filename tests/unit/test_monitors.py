@@ -7,8 +7,8 @@ import pytest
 import respx
 from pydantic import SecretStr
 
-from hyperping import API_PATHS, HYPERPING_API_BASE
 from hyperping.client import HyperpingClient, RetryConfig
+from hyperping.endpoints import API_BASE, Endpoint
 from hyperping.exceptions import (
     HyperpingAPIError,
     HyperpingAuthError,
@@ -16,7 +16,7 @@ from hyperping.exceptions import (
     HyperpingRateLimitError,
     HyperpingValidationError,
 )
-from hyperping.models import MonitorCreate
+from hyperping.models import MonitorCreate, MonitorUpdate
 
 
 class TestHyperpingClientMonitors:
@@ -24,7 +24,7 @@ class TestHyperpingClientMonitors:
 
     @respx.mock
     def test_list_monitors_success(self, client: HyperpingClient) -> None:
-        """Test successful list monitors."""
+        """Test successful list monitors (M17: Endpoint enum)."""
         mock_response = [
             {
                 "monitorUuid": "mon_123",
@@ -40,7 +40,7 @@ class TestHyperpingClientMonitors:
                 "paused": False,
             }
         ]
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['monitors']}").mock(
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(
             return_value=httpx.Response(200, json=mock_response)
         )
 
@@ -53,7 +53,7 @@ class TestHyperpingClientMonitors:
     @respx.mock
     def test_list_monitors_empty(self, client: HyperpingClient) -> None:
         """Test list monitors with empty result."""
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['monitors']}").mock(
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(
             return_value=httpx.Response(200, json=[])
         )
 
@@ -76,7 +76,7 @@ class TestHyperpingClientMonitors:
             "down": False,
             "paused": True,
         }
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['monitors']}/mon_456").mock(
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}/mon_456").mock(
             return_value=httpx.Response(200, json=mock_response)
         )
 
@@ -88,7 +88,7 @@ class TestHyperpingClientMonitors:
     @respx.mock
     def test_get_monitor_not_found(self, client: HyperpingClient) -> None:
         """Test get monitor that doesn't exist."""
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['monitors']}/mon_notfound").mock(
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}/mon_notfound").mock(
             return_value=httpx.Response(404, json={"error": "Monitor not found"})
         )
 
@@ -111,7 +111,7 @@ class TestHyperpingClientMonitors:
             "down": False,
             "paused": False,
         }
-        respx.post(f"{HYPERPING_API_BASE}{API_PATHS['monitors']}").mock(
+        respx.post(f"{API_BASE}{Endpoint.MONITORS}").mock(
             return_value=httpx.Response(201, json=mock_response)
         )
 
@@ -127,7 +127,7 @@ class TestHyperpingClientMonitors:
     @respx.mock
     def test_create_monitor_validation_error(self, client: HyperpingClient) -> None:
         """Test create monitor with validation error."""
-        respx.post(f"{HYPERPING_API_BASE}{API_PATHS['monitors']}").mock(
+        respx.post(f"{API_BASE}{Endpoint.MONITORS}").mock(
             return_value=httpx.Response(
                 400,
                 json={
@@ -145,7 +145,7 @@ class TestHyperpingClientMonitors:
     @respx.mock
     def test_delete_monitor_success(self, client: HyperpingClient) -> None:
         """Test delete monitor."""
-        respx.delete(f"{HYPERPING_API_BASE}{API_PATHS['monitors']}/mon_del").mock(
+        respx.delete(f"{API_BASE}{Endpoint.MONITORS}/mon_del").mock(
             return_value=httpx.Response(204)
         )
 
@@ -155,7 +155,7 @@ class TestHyperpingClientMonitors:
     @respx.mock
     def test_auth_error(self, client: HyperpingClient) -> None:
         """Test authentication error."""
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['monitors']}").mock(
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(
             return_value=httpx.Response(401, json={"error": "Invalid API key"})
         )
 
@@ -167,7 +167,7 @@ class TestHyperpingClientMonitors:
     @respx.mock
     def test_rate_limit_error(self, client: HyperpingClient) -> None:
         """Test rate limit error."""
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['monitors']}").mock(
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(
             return_value=httpx.Response(
                 429,
                 json={"error": "Rate limit exceeded"},
@@ -183,7 +183,7 @@ class TestHyperpingClientMonitors:
     @respx.mock
     def test_ping_success(self, client: HyperpingClient) -> None:
         """Test ping connectivity check."""
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['monitors']}").mock(
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(
             return_value=httpx.Response(200, json=[])
         )
 
@@ -192,12 +192,205 @@ class TestHyperpingClientMonitors:
     @respx.mock
     def test_ping_auth_failure(self, client: HyperpingClient) -> None:
         """Test ping with auth failure."""
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['monitors']}").mock(
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(
             return_value=httpx.Response(401, json={"error": "Unauthorized"})
         )
 
         with pytest.raises(HyperpingAuthError):
             client.ping()
+
+    # ==================== M22: update_monitor / pause / resume ====================
+
+    @respx.mock
+    def test_update_monitor_changes_name(self, client: HyperpingClient) -> None:
+        """Test that update_monitor sends read-modify-write and returns updated monitor (M22)."""
+        current = {
+            "monitorUuid": "mon_upd",
+            "name": "Old Name",
+            "url": "https://example.com",
+            "method": "GET",
+            "frequency": 60,
+            "regions": ["london"],
+            "headers": {},
+            "expectedStatus": 200,
+            "down": False,
+            "paused": False,
+        }
+        updated = {**current, "name": "New Name"}
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}/mon_upd").mock(
+            return_value=httpx.Response(200, json=current)
+        )
+        respx.put(f"{API_BASE}{Endpoint.MONITORS}/mon_upd").mock(
+            return_value=httpx.Response(200, json=updated)
+        )
+
+        result = client.update_monitor("mon_upd", MonitorUpdate(name="New Name"))
+        assert result.name == "New Name"
+
+    @respx.mock
+    def test_pause_monitor(self, client: HyperpingClient) -> None:
+        """Test that pause_monitor sets paused=True on the monitor (M22)."""
+        current = {
+            "monitorUuid": "mon_pause",
+            "name": "Active Monitor",
+            "url": "https://example.com",
+            "method": "GET",
+            "frequency": 60,
+            "regions": ["london"],
+            "headers": {},
+            "expectedStatus": 200,
+            "down": False,
+            "paused": False,
+        }
+        paused_response = {**current, "paused": True}
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}/mon_pause").mock(
+            return_value=httpx.Response(200, json=current)
+        )
+        respx.put(f"{API_BASE}{Endpoint.MONITORS}/mon_pause").mock(
+            return_value=httpx.Response(200, json=paused_response)
+        )
+
+        result = client.pause_monitor("mon_pause")
+        assert result.paused is True
+
+    @respx.mock
+    def test_resume_monitor(self, client: HyperpingClient) -> None:
+        """Test that resume_monitor sets paused=False on the monitor (M22)."""
+        current = {
+            "monitorUuid": "mon_resume",
+            "name": "Paused Monitor",
+            "url": "https://example.com",
+            "method": "GET",
+            "frequency": 60,
+            "regions": ["london"],
+            "headers": {},
+            "expectedStatus": 200,
+            "down": False,
+            "paused": True,
+        }
+        resumed_response = {**current, "paused": False}
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}/mon_resume").mock(
+            return_value=httpx.Response(200, json=current)
+        )
+        respx.put(f"{API_BASE}{Endpoint.MONITORS}/mon_resume").mock(
+            return_value=httpx.Response(200, json=resumed_response)
+        )
+
+        result = client.resume_monitor("mon_resume")
+        assert result.paused is False
+
+    # ==================== M23: report tests ====================
+
+    @respx.mock
+    def test_get_all_reports(self, client: HyperpingClient) -> None:
+        """Test that get_all_reports returns MonitorReport objects (M23)."""
+        mock_response = {
+            "period": {"from": "2024-01-01T00:00:00Z", "to": "2024-01-31T23:59:59Z"},
+            "monitors": [
+                {
+                    "uuid": "mon_r1",
+                    "name": "Report Monitor",
+                    "protocol": "http",
+                    "sla": 99.9,
+                    "mttr": 120,
+                    "mttrFormatted": "2m",
+                    "outages": {
+                        "count": 1,
+                        "totalDowntime": 120,
+                        "totalDowntimeFormatted": "2m",
+                        "longestOutage": 120,
+                        "longestOutageFormatted": "2m",
+                        "details": [
+                            {
+                                "startDate": "2024-01-15T10:00:00Z",
+                                "endDate": "2024-01-15T10:02:00Z",
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+        respx.get(f"{API_BASE}{Endpoint.REPORTS}").mock(
+            return_value=httpx.Response(200, json=mock_response)
+        )
+
+        reports = client.get_all_reports(period="30d")
+
+        assert len(reports) == 1
+        assert reports[0].uuid == "mon_r1"
+        assert reports[0].sla == 99.9
+        # Verify nested outages.details is parsed correctly
+        assert len(reports[0].outages.details) == 1
+        assert reports[0].outages.details[0].start_date == "2024-01-15T10:00:00Z"
+
+    @respx.mock
+    def test_get_monitor_report(self, client: HyperpingClient) -> None:
+        """Test get_monitor_report returns the matching report (M23)."""
+        mock_response = {
+            "period": {"from": "2024-01-01T00:00:00Z", "to": "2024-01-31T23:59:59Z"},
+            "monitors": [
+                {
+                    "uuid": "mon_target",
+                    "name": "Target Monitor",
+                    "protocol": "http",
+                    "sla": 98.5,
+                    "mttr": 0,
+                    "mttrFormatted": "0s",
+                    "outages": {
+                        "count": 0,
+                        "totalDowntime": 0,
+                        "totalDowntimeFormatted": "0s",
+                        "longestOutage": 0,
+                        "longestOutageFormatted": "0s",
+                        "details": [],
+                    },
+                },
+                {
+                    "uuid": "mon_other",
+                    "name": "Other Monitor",
+                    "protocol": "http",
+                    "sla": 100.0,
+                    "mttr": 0,
+                    "mttrFormatted": "0s",
+                    "outages": {
+                        "count": 0,
+                        "totalDowntime": 0,
+                        "totalDowntimeFormatted": "0s",
+                        "longestOutage": 0,
+                        "longestOutageFormatted": "0s",
+                        "details": [],
+                    },
+                },
+            ],
+        }
+        respx.get(f"{API_BASE}{Endpoint.REPORTS}").mock(
+            return_value=httpx.Response(200, json=mock_response)
+        )
+
+        report = client.get_monitor_report("mon_target")
+        assert report.uuid == "mon_target"
+        assert report.sla == 98.5
+
+    @respx.mock
+    def test_get_monitor_report_not_found(self, client: HyperpingClient) -> None:
+        """Test get_monitor_report raises NotFoundError when UUID not in batch (M23)."""
+        respx.get(f"{API_BASE}{Endpoint.REPORTS}").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "period": {"from": "2024-01-01", "to": "2024-01-31"},
+                    "monitors": [],
+                },
+            )
+        )
+
+        with pytest.raises(HyperpingNotFoundError):
+            client.get_monitor_report("mon_missing")
+
+    def test_get_all_reports_invalid_period(self, client: HyperpingClient) -> None:
+        """Test that an invalid period raises ValueError (M9)."""
+        with pytest.raises(ValueError, match="Invalid period"):
+            client.get_all_reports(period="15d")  # type: ignore[arg-type]
 
 
 class TestRetryBehavior:
@@ -220,12 +413,13 @@ class TestRetryBehavior:
                 return httpx.Response(500, json={"error": "Server error"})
             return httpx.Response(200, json=[])
 
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['monitors']}").mock(side_effect=handler)
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(side_effect=handler)
 
         monitors = c.list_monitors()
 
         assert call_count == 3
         assert monitors == []
+        c.close()
 
     @respx.mock
     def test_no_retry_on_400(self) -> None:
@@ -242,13 +436,14 @@ class TestRetryBehavior:
             call_count += 1
             return httpx.Response(400, json={"error": "Bad request"})
 
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['monitors']}").mock(side_effect=handler)
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(side_effect=handler)
 
         with pytest.raises(HyperpingValidationError):
             c.list_monitors()
 
         # Should only be called once (no retry)
         assert call_count == 1
+        c.close()
 
 
 class TestContextManager:
@@ -257,7 +452,7 @@ class TestContextManager:
     @respx.mock
     def test_context_manager(self) -> None:
         """Test client works as context manager."""
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['monitors']}").mock(
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(
             return_value=httpx.Response(200, json=[])
         )
 
@@ -279,7 +474,7 @@ class TestSecretStrApiKey:
     @respx.mock
     def test_api_key_used_in_auth_header(self) -> None:
         """Authorization header contains the actual key."""
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['monitors']}").mock(
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(
             return_value=httpx.Response(200, json=[])
         )
         c = HyperpingClient(api_key="sk_test_auth")
@@ -310,7 +505,7 @@ class TestCircuitBreakerFiltering:
             retry_config=RetryConfig(max_retries=0),
         )
 
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['monitors']}").mock(
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(
             return_value=httpx.Response(400, json={"error": "bad request"})
         )
 
@@ -318,6 +513,7 @@ class TestCircuitBreakerFiltering:
             c.list_monitors()
 
         assert c.circuit_breaker.failure_count == 0
+        c.close()
 
     @respx.mock
     def test_5xx_error_trips_circuit_breaker(self) -> None:
@@ -327,7 +523,7 @@ class TestCircuitBreakerFiltering:
             retry_config=RetryConfig(max_retries=0),
         )
 
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['monitors']}").mock(
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(
             return_value=httpx.Response(500, json={"error": "server error"})
         )
 
@@ -335,6 +531,7 @@ class TestCircuitBreakerFiltering:
             c.list_monitors()
 
         assert c.circuit_breaker.failure_count == 1
+        c.close()
 
     @respx.mock
     def test_429_does_not_trip_circuit_breaker(self) -> None:
@@ -344,7 +541,7 @@ class TestCircuitBreakerFiltering:
             retry_config=RetryConfig(max_retries=0),
         )
 
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['monitors']}").mock(
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(
             return_value=httpx.Response(429, json={"error": "rate limited"})
         )
 
@@ -352,6 +549,7 @@ class TestCircuitBreakerFiltering:
             c.list_monitors()
 
         assert c.circuit_breaker.failure_count == 0
+        c.close()
 
 
 class TestRetryAfterCap:
@@ -373,7 +571,7 @@ class TestRetryAfterCap:
                 )
             return httpx.Response(200, json=[])
 
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['monitors']}").mock(side_effect=handler)
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(side_effect=handler)
 
         with patch("hyperping.client.time.sleep") as mock_sleep:
             c = HyperpingClient(
@@ -386,6 +584,7 @@ class TestRetryAfterCap:
             assert mock_sleep.call_count == 1
             slept = mock_sleep.call_args[0][0]
             assert slept == 120.0
+            c.close()
 
     @respx.mock
     def test_retry_after_capped_at_300s(self) -> None:
@@ -403,7 +602,7 @@ class TestRetryAfterCap:
                 )
             return httpx.Response(200, json=[])
 
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['monitors']}").mock(side_effect=handler)
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(side_effect=handler)
 
         with patch("hyperping.client.time.sleep") as mock_sleep:
             c = HyperpingClient(
@@ -414,6 +613,7 @@ class TestRetryAfterCap:
 
             slept = mock_sleep.call_args[0][0]
             assert slept == 300.0
+            c.close()
 
 
 class TestRetryJitter:
@@ -431,7 +631,7 @@ class TestRetryJitter:
                 return httpx.Response(500, json={"error": "server error"})
             return httpx.Response(200, json=[])
 
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['monitors']}").mock(side_effect=handler)
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(side_effect=handler)
 
         sleep_values: list[float] = []
 
@@ -468,7 +668,7 @@ class TestRetryJitter:
                 )
             return httpx.Response(200, json=[])
 
-        respx.get(f"{HYPERPING_API_BASE}{API_PATHS['monitors']}").mock(side_effect=handler)
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(side_effect=handler)
 
         with patch("hyperping.client.time.sleep") as mock_sleep:
             c = HyperpingClient(
@@ -481,3 +681,4 @@ class TestRetryJitter:
             assert mock_sleep.call_count == 1
             slept = mock_sleep.call_args[0][0]
             assert slept == 45.0
+            c.close()
