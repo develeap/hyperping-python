@@ -14,7 +14,6 @@ from hyperping.models import (
     Incident,
     IncidentCreate,
     IncidentType,
-    IncidentUpdate,
     IncidentUpdateRequest,
     IncidentUpdateType,
     LocalizedText,
@@ -286,8 +285,6 @@ class TestIncidentAPIClient:
     @respx.mock
     def test_update_incident_not_found(self, client: HyperpingClient) -> None:
         """Test that update_incident raises HyperpingNotFoundError on 404 (M21)."""
-        from hyperping.exceptions import HyperpingNotFoundError
-
         respx.put(f"{API_BASE}{Endpoint.INCIDENTS}/inci_missing").mock(
             return_value=httpx.Response(404, json={"error": "Not found"})
         )

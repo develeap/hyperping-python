@@ -19,6 +19,30 @@ _RESOURCE_ID_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 logger = logging.getLogger(__name__)
 
 
+def expect_dict(response: Any, context: str = "API response") -> dict[str, Any]:
+    """Assert that a response is a dict, raising a clear SDK error otherwise.
+
+    Used by single-resource endpoints where the Hyperping API is expected to
+    return a JSON object (not a list).  Unlike a bare ``assert``, this check
+    survives ``python -O`` and produces a meaningful error message.
+
+    Args:
+        response: Raw value returned by ``_request``.
+        context: Human-readable label for the error message.
+
+    Returns:
+        The same dict, now narrowed for the type checker.
+
+    Raises:
+        TypeError: If *response* is not a dict.
+    """
+    if not isinstance(response, dict):
+        raise TypeError(
+            f"Expected dict from {context}, got {type(response).__name__}"
+        )
+    return response
+
+
 def validate_id(value: str, name: str = "id") -> str:
     """Assert that a resource ID contains only safe characters.
 
@@ -60,11 +84,11 @@ def unwrap_list(response: Any, key: str) -> list[Any]:
         The list of raw item dicts.
     """
     if isinstance(response, list):
-        return response  # type: ignore[return-value]
+        return response
     if isinstance(response, dict):
         if key in response:
-            return response[key]  # type: ignore[return-value]
-        return response.get("data", [])  # type: ignore[return-value]
+            return response[key]  # type: ignore[no-any-return]
+        return response.get("data", [])  # type: ignore[no-any-return]
     return []
 
 

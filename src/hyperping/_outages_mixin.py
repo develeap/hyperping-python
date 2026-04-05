@@ -10,7 +10,7 @@ import logging
 from typing import Any
 
 from hyperping._protocols import _ClientProtocol
-from hyperping._utils import parse_list, validate_id
+from hyperping._utils import expect_dict, parse_list, validate_id
 from hyperping.endpoints import Endpoint
 from hyperping.exceptions import HyperpingNotFoundError
 from hyperping.models import Outage
@@ -61,8 +61,7 @@ class OutagesMixin(_ClientProtocol):
             f"{Endpoint.OUTAGES}/{outage_id}/acknowledge",
             json=json_body,
         )
-        assert isinstance(result, dict)
-        return result
+        return expect_dict(result, "outage operation")
 
     def resolve_outage(self, outage_id: str, message: str | None = None) -> dict[str, Any]:
         """Resolve an outage.
@@ -84,8 +83,7 @@ class OutagesMixin(_ClientProtocol):
             f"{Endpoint.OUTAGES}/{outage_id}/resolve",
             json=json_body,
         )
-        assert isinstance(result, dict)
-        return result
+        return expect_dict(result, "outage operation")
 
     def escalate_outage(self, outage_id: str) -> dict[str, Any]:
         """Escalate an outage.
@@ -101,5 +99,4 @@ class OutagesMixin(_ClientProtocol):
         """
         validate_id(outage_id, "outage_id")  # H8
         result = self._request("POST", f"{Endpoint.OUTAGES}/{outage_id}/escalate")
-        assert isinstance(result, dict)
-        return result
+        return expect_dict(result, "outage operation")

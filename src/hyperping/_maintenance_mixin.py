@@ -10,7 +10,7 @@ import logging
 from datetime import UTC, datetime
 
 from hyperping._protocols import _ClientProtocol
-from hyperping._utils import parse_list, unwrap_list, validate_id
+from hyperping._utils import expect_dict, parse_list, unwrap_list, validate_id
 from hyperping.endpoints import Endpoint
 from hyperping.models import (
     Maintenance,
@@ -67,8 +67,7 @@ class MaintenanceMixin(_ClientProtocol):
         """
         validate_id(maintenance_id, "maintenance_id")  # H8
         response = self._request("GET", f"{Endpoint.MAINTENANCE}/{maintenance_id}")
-        assert isinstance(response, dict)
-        return Maintenance.model_validate(response)
+        return Maintenance.model_validate(expect_dict(response, "get_maintenance"))
 
     def create_maintenance(self, maintenance: MaintenanceCreate) -> Maintenance:
         """Create a new maintenance window.
@@ -88,8 +87,10 @@ class MaintenanceMixin(_ClientProtocol):
             The full maintenance window is fetched after creation.
         """
         payload = maintenance.model_dump(exclude_none=True, by_alias=True, mode="json")
-        response = self._request("POST", Endpoint.MAINTENANCE, json=payload)
-        assert isinstance(response, dict)
+        response = expect_dict(
+            self._request("POST", Endpoint.MAINTENANCE, json=payload),
+            "create_maintenance",
+        )
         # v1 API returns minimal response with just uuid
         if "uuid" in response and "name" not in response:
             # Fetch the full maintenance after creation
@@ -132,10 +133,10 @@ class MaintenanceMixin(_ClientProtocol):
         }
         payload.update(partial)
 
-        response = self._request(
-            "PUT", f"{Endpoint.MAINTENANCE}/{maintenance_id}", json=payload
+        response = expect_dict(
+            self._request("PUT", f"{Endpoint.MAINTENANCE}/{maintenance_id}", json=payload),
+            "update_maintenance",
         )
-        assert isinstance(response, dict)
         return Maintenance.model_validate(response)
 
     def delete_maintenance(self, maintenance_id: str) -> None:

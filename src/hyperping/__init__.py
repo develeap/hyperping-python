@@ -26,9 +26,6 @@ from hyperping.endpoints import (
     API_BASE,
     APIVersion,
     Endpoint,
-    EndpointConfig,
-    get_endpoint_url,
-    get_version_for_endpoint,
 )
 from hyperping.exceptions import (
     HyperpingAPIError,
@@ -40,7 +37,6 @@ from hyperping.exceptions import (
 from hyperping.models import (
     DEFAULT_REGIONS,
     AddIncidentUpdateRequest,
-    APIErrorResponse,
     DnsRecordType,
     HttpMethod,
     Incident,
@@ -159,9 +155,7 @@ def __getattr__(name: str) -> object:
             DeprecationWarning,
             stacklevel=2,
         )
-        from hyperping.endpoints import API_BASE as _base
-
-        return _base
+        return API_BASE
 
     if name == "API_PATHS":
         warnings.warn(
@@ -170,9 +164,9 @@ def __getattr__(name: str) -> object:
             DeprecationWarning,
             stacklevel=2,
         )
-        from hyperping.endpoints import API_PATHS as _paths
+        from hyperping import endpoints as _ep
 
-        return _paths
+        return _ep.API_PATHS
 
     if name == "IncidentStatus":
         warnings.warn(
@@ -192,10 +186,18 @@ def __getattr__(name: str) -> object:
         )
         return AddIncidentUpdateRequest
 
-    # Expose endpoint helpers at package level (not in __all__ but still useful)
-    if name in {"EndpointConfig", "ENDPOINTS", "get_endpoint_url", "get_version_for_endpoint"}:
-        import hyperping.endpoints as _ep
+    # Symbols removed from __all__ (H5) but still accessible for backward compat
+    _endpoint_helpers = {
+        "EndpointConfig", "ENDPOINTS", "get_endpoint_url", "get_version_for_endpoint",
+    }
+    if name in _endpoint_helpers:
+        from hyperping import endpoints as _ep
 
         return getattr(_ep, name)
+
+    if name == "APIErrorResponse":
+        from hyperping.models._monitor_models import APIErrorResponse  # noqa: N813
+
+        return APIErrorResponse
 
     raise AttributeError(f"module 'hyperping' has no attribute {name!r}")

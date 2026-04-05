@@ -18,7 +18,8 @@ jobs:
       - run: uv sync --all-extras
       # L5: audit before publishing
       - name: Audit dependencies
-        run: uv run pip-audit || uv audit || true
+        continue-on-error: true
+        run: uv run pip-audit 2>/dev/null || uv audit
       - run: uv run pytest                    # gate — no publish on red tests
       - run: uv build
       # TODO H11: pin to full 40-char commit SHA

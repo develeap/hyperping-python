@@ -41,7 +41,8 @@ jobs:
 
       # L5: dependency vulnerability scan on every CI run
       - name: Audit dependencies
-        run: uv run pip-audit || uv audit || true
+        continue-on-error: true
+        run: uv run pip-audit 2>/dev/null || uv audit
 
       - name: Upload coverage to Codecov
         if: matrix.python-version == '3.12'

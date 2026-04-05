@@ -18,10 +18,10 @@ import httpx
 from pydantic import SecretStr
 
 from hyperping._circuit_breaker import (
+    DEFAULT_CIRCUIT_BREAKER_CONFIG,
     CircuitBreaker,
     CircuitBreakerConfig,
     CircuitState,
-    DEFAULT_CIRCUIT_BREAKER_CONFIG,
 )
 from hyperping._incidents_mixin import IncidentsMixin
 from hyperping._maintenance_mixin import MaintenanceMixin
@@ -29,9 +29,7 @@ from hyperping._monitors_mixin import MonitorsMixin
 from hyperping._outages_mixin import OutagesMixin
 from hyperping._statuspages_mixin import StatusPagesMixin
 from hyperping._version import __version__
-from hyperping.endpoints import (
-    API_BASE,
-)
+from hyperping.endpoints import API_BASE
 from hyperping.exceptions import (
     HyperpingAPIError,
     HyperpingAuthError,
@@ -348,10 +346,11 @@ class HyperpingClient(
             HyperpingAPIError: On API errors after retries exhausted
         """
         if not self._circuit_breaker.call_allowed():
+            cb = self._circuit_breaker
             raise HyperpingAPIError(
-                f"Circuit breaker OPEN — API calls suspended. "
-                f"Consecutive failures: {self._circuit_breaker.failure_count}. "
-                f"Will recover after {self._circuit_breaker.recovery_timeout}s."  # L7: correct field
+                f"Circuit breaker OPEN - API calls suspended. "
+                f"Consecutive failures: {cb.failure_count}. "
+                f"Will recover after {cb.recovery_timeout}s."
             )
 
         last_exception: Exception | None = None

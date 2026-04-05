@@ -6,10 +6,11 @@ Provides CRUD and reporting methods for Hyperping monitors. Mixed into
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+import logging
+from typing import Any, Literal
 
 from hyperping._protocols import _ClientProtocol
-from hyperping._utils import parse_list, unwrap_list, validate_id
+from hyperping._utils import expect_dict, parse_list, unwrap_list, validate_id
 from hyperping.endpoints import Endpoint
 from hyperping.exceptions import HyperpingNotFoundError
 from hyperping.models import (
@@ -18,11 +19,6 @@ from hyperping.models import (
     MonitorReport,
     MonitorUpdate,
 )
-
-if TYPE_CHECKING:
-    pass
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -85,8 +81,7 @@ class MonitorsMixin(_ClientProtocol):
         """
         validate_id(monitor_id, "monitor_id")  # H8
         response = self._request("GET", f"{Endpoint.MONITORS}/{monitor_id}")
-        assert isinstance(response, dict)
-        return Monitor.model_validate(response)
+        return Monitor.model_validate(expect_dict(response, "get_monitor"))
 
     def create_monitor(self, monitor: MonitorCreate) -> Monitor:
         """Create a new monitor.
@@ -103,8 +98,7 @@ class MonitorsMixin(_ClientProtocol):
         """
         payload = monitor.model_dump(exclude_none=True)
         response = self._request("POST", Endpoint.MONITORS, json=payload)
-        assert isinstance(response, dict)
-        return Monitor.model_validate(response)
+        return Monitor.model_validate(expect_dict(response, "create_monitor"))
 
     def update_monitor(
         self,
@@ -136,7 +130,7 @@ class MonitorsMixin(_ClientProtocol):
         current = self.get_monitor(monitor_id)
 
         # Build full payload from current writable state
-        payload: dict = current.model_dump(
+        payload: dict[str, Any] = current.model_dump(
             mode="json",
             exclude_none=True,
             include=set(_MONITOR_WRITABLE_FIELDS),
@@ -146,8 +140,7 @@ class MonitorsMixin(_ClientProtocol):
         payload.update(update.model_dump(exclude_none=True))
 
         response = self._request("PUT", f"{Endpoint.MONITORS}/{monitor_id}", json=payload)
-        assert isinstance(response, dict)
-        return Monitor.model_validate(response)
+        return Monitor.model_validate(expect_dict(response, "update_monitor"))
 
     def delete_monitor(self, monitor_id: str) -> None:
         """Delete a monitor.
@@ -207,8 +200,10 @@ class MonitorsMixin(_ClientProtocol):
             raise ValueError(
                 f"Invalid period {period!r}. Valid values: {sorted(_VALID_PERIODS)}"
             )
-        response = self._request("GET", Endpoint.REPORTS, params={"period": period})
-        assert isinstance(response, dict)
+        response = expect_dict(
+            self._request("GET", Endpoint.REPORTS, params={"period": period}),
+            "get_all_reports",
+        )
         period_info = response.get("period", {})
         monitors_data = response.get("monitors", [])
 

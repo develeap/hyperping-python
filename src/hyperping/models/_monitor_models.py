@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from enum import IntEnum, StrEnum
 from typing import Any
 
@@ -143,7 +142,7 @@ class LocalizedText(BaseModel):
     es: str | None = Field(default=None, description="Spanish text")
 
     @classmethod
-    def from_string(cls, text: str) -> "LocalizedText":
+    def from_string(cls, text: str) -> LocalizedText:
         """Create LocalizedText from a simple string (English only)."""
         return cls(en=text)
 
@@ -154,9 +153,6 @@ class LocalizedText(BaseModel):
             # Try model_extra for languages beyond the explicit fields
             value = (self.model_extra or {}).get(lang)
         return value if value is not None else default
-
-
-_URL_SCHEME_RE = re.compile(r"^https?://", re.IGNORECASE)
 
 
 class MonitorBase(BaseModel):
@@ -296,7 +292,7 @@ class MonitorCreate(MonitorBase):
         return data
 
     @model_validator(mode="after")
-    def validate_dns_fields(self) -> "MonitorCreate":
+    def validate_dns_fields(self) -> MonitorCreate:
         """Raise if DNS-specific fields are set on a non-DNS monitor."""
         dns_fields = {
             "dns_record_type": self.dns_record_type,

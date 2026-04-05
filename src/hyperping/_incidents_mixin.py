@@ -10,7 +10,7 @@ import logging
 from datetime import UTC, datetime
 
 from hyperping._protocols import _ClientProtocol
-from hyperping._utils import parse_list, unwrap_list, validate_id
+from hyperping._utils import expect_dict, parse_list, unwrap_list, validate_id
 from hyperping.endpoints import Endpoint
 from hyperping.models import (
     AddIncidentUpdateRequest,  # canonical name (M18)
@@ -65,8 +65,7 @@ class IncidentsMixin(_ClientProtocol):
         """
         validate_id(incident_id, "incident_id")  # H8
         response = self._request("GET", f"{Endpoint.INCIDENTS}/{incident_id}")
-        assert isinstance(response, dict)
-        return Incident.model_validate(response)
+        return Incident.model_validate(expect_dict(response, "get_incident"))
 
     def create_incident(self, incident: IncidentCreate) -> Incident:
         """Create a new incident.
@@ -86,8 +85,10 @@ class IncidentsMixin(_ClientProtocol):
             not the full incident object. The full incident is fetched after creation.
         """
         payload = incident.model_dump(exclude_none=True, by_alias=True, mode="json")
-        response = self._request("POST", Endpoint.INCIDENTS, json=payload)
-        assert isinstance(response, dict)
+        response = expect_dict(
+            self._request("POST", Endpoint.INCIDENTS, json=payload),
+            "create_incident",
+        )
         # v3 API returns minimal response with just uuid
         if "uuid" in response and "title" not in response:
             # Fetch the full incident after creation
@@ -115,10 +116,10 @@ class IncidentsMixin(_ClientProtocol):
         """
         validate_id(incident_id, "incident_id")  # H8
         payload = update.model_dump(exclude_none=True, by_alias=True)
-        response = self._request(
-            "PUT", f"{Endpoint.INCIDENTS}/{incident_id}", json=payload
+        response = expect_dict(
+            self._request("PUT", f"{Endpoint.INCIDENTS}/{incident_id}", json=payload),
+            "update_incident",
         )
-        assert isinstance(response, dict)
         return Incident.model_validate(response)
 
     def add_incident_update(

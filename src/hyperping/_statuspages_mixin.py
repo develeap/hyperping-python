@@ -10,7 +10,7 @@ import logging
 import re
 
 from hyperping._protocols import _ClientProtocol
-from hyperping._utils import parse_list, unwrap_list, validate_id
+from hyperping._utils import expect_dict, parse_list, unwrap_list, validate_id
 from hyperping.endpoints import Endpoint
 from hyperping.models import (
     StatusPage,
@@ -67,8 +67,7 @@ class StatusPagesMixin(_ClientProtocol):
         """
         validate_id(status_page_id, "status_page_id")  # H8
         response = self._request("GET", f"{Endpoint.STATUSPAGES}/{status_page_id}")
-        assert isinstance(response, dict)
-        return StatusPage.model_validate(response)
+        return StatusPage.model_validate(expect_dict(response, "get_status_page"))
 
     def create_status_page(self, status_page: StatusPageCreate) -> StatusPage:
         """Create a new status page.
@@ -85,8 +84,7 @@ class StatusPagesMixin(_ClientProtocol):
         """
         payload = status_page.model_dump(exclude_none=True, by_alias=True)
         response = self._request("POST", Endpoint.STATUSPAGES, json=payload)
-        assert isinstance(response, dict)
-        return StatusPage.model_validate(response)
+        return StatusPage.model_validate(expect_dict(response, "create_status_page"))
 
     def update_status_page(
         self,
@@ -109,10 +107,10 @@ class StatusPagesMixin(_ClientProtocol):
         """
         validate_id(status_page_id, "status_page_id")  # H8
         payload = update.model_dump(exclude_none=True, by_alias=True)
-        response = self._request(
-            "PUT", f"{Endpoint.STATUSPAGES}/{status_page_id}", json=payload
+        response = expect_dict(
+            self._request("PUT", f"{Endpoint.STATUSPAGES}/{status_page_id}", json=payload),
+            "update_status_page",
         )
-        assert isinstance(response, dict)
         return StatusPage.model_validate(response)
 
     def delete_status_page(self, status_page_id: str) -> None:
@@ -168,12 +166,14 @@ class StatusPagesMixin(_ClientProtocol):
         if not _EMAIL_RE.match(email):
             raise ValueError(f"Invalid email address: {email!r}")
         payload = {"email": email}
-        response = self._request(
-            "POST",
-            f"{Endpoint.STATUSPAGES}/{status_page_id}/subscribers",
-            json=payload,
+        response = expect_dict(
+            self._request(
+                "POST",
+                f"{Endpoint.STATUSPAGES}/{status_page_id}/subscribers",
+                json=payload,
+            ),
+            "add_subscriber",
         )
-        assert isinstance(response, dict)
         return StatusPageSubscriber.model_validate(response)
 
     def remove_subscriber(self, status_page_id: str, subscriber_id: str) -> None:

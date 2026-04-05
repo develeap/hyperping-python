@@ -48,6 +48,6 @@ class Outage(BaseModel):
     )
 
     @classmethod
-    def from_raw(cls, data: dict[str, Any]) -> "Outage":
+    def from_raw(cls, data: dict[str, Any]) -> Outage:
         """Parse an outage from a raw API response dict."""
         return cls.model_validate(data)
