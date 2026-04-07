@@ -21,8 +21,12 @@ class OutageAction(BaseModel):
 
     model_config = ConfigDict(extra="ignore", populate_by_name=True, frozen=True)
 
-    status: str = Field(..., description='Action result, e.g. "acknowledged", "resolved", "escalated"')
-    message: str | None = Field(default=None, description="Optional message included with the action")
+    status: str = Field(
+        ..., description='Action result, e.g. "acknowledged", "resolved", "escalated"'
+    )
+    message: str | None = Field(
+        default=None, description="Optional message included with the action"
+    )
 
     @classmethod
     def from_raw(cls, data: dict[str, Any]) -> OutageAction:
