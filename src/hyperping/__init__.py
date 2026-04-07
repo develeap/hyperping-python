@@ -14,6 +14,7 @@ Quick start::
             print(f"{m.name}: {'down' if m.down else 'up'}")
 """
 
+from hyperping._async_client import AsyncHyperpingClient
 from hyperping._version import __version__
 from hyperping.client import (
     CircuitBreaker,
@@ -78,7 +79,8 @@ from hyperping.models import (
 __all__ = [
     # Version
     "__version__",
-    # Client
+    # Clients
+    "AsyncHyperpingClient",
     "HyperpingClient",
     # Configuration
     "RetryConfig",

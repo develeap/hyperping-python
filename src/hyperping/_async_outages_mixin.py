@@ -1,7 +1,7 @@
-"""Outage operations mixin for HyperpingClient.
+"""Async outage operations mixin for AsyncHyperpingClient.
 
 Provides methods for managing auto-detected outages (v2 API). Mixed into
-:class:`~hyperping.client.HyperpingClient` at class definition time.
+:class:`~hyperping._async_client.AsyncHyperpingClient` at class definition time.
 """
 
 from __future__ import annotations
@@ -9,8 +9,13 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from hyperping._protocols import _ClientProtocol
-from hyperping._utils import collect_all_pages, expect_dict, parse_list, validate_id
+from hyperping._protocols import _AsyncClientProtocol
+from hyperping._utils import (
+    collect_all_pages_async,
+    expect_dict,
+    parse_list,
+    validate_id,
+)
 from hyperping.endpoints import Endpoint
 from hyperping.exceptions import HyperpingNotFoundError
 from hyperping.models import Outage, OutageAction
@@ -21,10 +26,10 @@ _VALID_STATUSES: frozenset[str] = frozenset({"all", "ongoing", "resolved"})
 _VALID_TYPES: frozenset[str] = frozenset({"all", "manual", "monitor"})
 
 
-class OutagesMixin(_ClientProtocol):
-    """Outage-related API operations."""
+class AsyncOutagesMixin(_AsyncClientProtocol):
+    """Async outage-related API operations."""
 
-    def list_outages(
+    async def list_outages(
         self,
         page: int | None = None,
         status: str = "all",
@@ -68,20 +73,22 @@ class OutagesMixin(_ClientProtocol):
         try:
             if page is not None:
                 params["page"] = page
-                data = self._request("GET", Endpoint.OUTAGES, params=params)
+                data = await self._request("GET", Endpoint.OUTAGES, params=params)
                 raw: list[Any] = (
                     data.get("outages", []) if isinstance(data, dict)
                     else (data if isinstance(data, list) else [])
                 )
                 return parse_list(raw, Outage, "outage")
-            return collect_all_pages(
+            return await collect_all_pages_async(
                 self._request, Endpoint.OUTAGES, "outages", params or None, Outage, "outage"
             )
         except HyperpingNotFoundError:
             logger.debug("Outage endpoint not available (404)")
             return []
 
-    def acknowledge_outage(self, outage_id: str, message: str | None = None) -> OutageAction:
+    async def acknowledge_outage(
+        self, outage_id: str, message: str | None = None
+    ) -> OutageAction:
         """Acknowledge an outage.
 
         Args:
@@ -94,16 +101,18 @@ class OutagesMixin(_ClientProtocol):
         Raises:
             HyperpingNotFoundError: If outage not found.
         """
-        validate_id(outage_id, "outage_id")  # H8
+        validate_id(outage_id, "outage_id")
         json_body = {"message": message} if message else None
-        result = self._request(
+        result = await self._request(
             "POST",
             f"{Endpoint.OUTAGES}/{outage_id}/acknowledge",
             json=json_body,
         )
         return OutageAction.from_raw(expect_dict(result, "outage operation"))
 
-    def resolve_outage(self, outage_id: str, message: str | None = None) -> OutageAction:
+    async def resolve_outage(
+        self, outage_id: str, message: str | None = None
+    ) -> OutageAction:
         """Resolve an outage.
 
         Args:
@@ -116,16 +125,16 @@ class OutagesMixin(_ClientProtocol):
         Raises:
             HyperpingNotFoundError: If outage not found.
         """
-        validate_id(outage_id, "outage_id")  # H8
+        validate_id(outage_id, "outage_id")
         json_body = {"message": message} if message else None
-        result = self._request(
+        result = await self._request(
             "POST",
             f"{Endpoint.OUTAGES}/{outage_id}/resolve",
             json=json_body,
         )
         return OutageAction.from_raw(expect_dict(result, "outage operation"))
 
-    def escalate_outage(self, outage_id: str) -> OutageAction:
+    async def escalate_outage(self, outage_id: str) -> OutageAction:
         """Escalate an outage.
 
         Args:
@@ -137,6 +146,69 @@ class OutagesMixin(_ClientProtocol):
         Raises:
             HyperpingNotFoundError: If outage not found.
         """
-        validate_id(outage_id, "outage_id")  # H8
-        result = self._request("POST", f"{Endpoint.OUTAGES}/{outage_id}/escalate")
+        validate_id(outage_id, "outage_id")
+        result = await self._request("POST", f"{Endpoint.OUTAGES}/{outage_id}/escalate")
         return OutageAction.from_raw(expect_dict(result, "outage operation"))
+
+    async def unacknowledge_outage(self, outage_id: str) -> OutageAction:
+        """Unacknowledge an outage.
+
+        Args:
+            outage_id: Outage UUID.
+
+        Returns:
+            :class:`~hyperping.models.OutageAction` with the action result.
+
+        Raises:
+            HyperpingNotFoundError: If outage not found.
+        """
+        validate_id(outage_id, "outage_id")
+        result = await self._request(
+            "POST", f"{Endpoint.OUTAGES}/{outage_id}/unacknowledge"
+        )
+        return OutageAction.from_raw(expect_dict(result, "outage operation"))
+
+    async def delete_outage(self, outage_id: str) -> None:
+        """Delete an outage.
+
+        Args:
+            outage_id: Outage UUID.
+
+        Raises:
+            HyperpingNotFoundError: If outage not found.
+        """
+        validate_id(outage_id, "outage_id")
+        await self._request("DELETE", f"{Endpoint.OUTAGES}/{outage_id}")
+
+    async def create_outage(self, monitor_uuid: str) -> Outage:
+        """Create a manual outage for a monitor.
+
+        Args:
+            monitor_uuid: Monitor UUID to create the outage for.
+
+        Returns:
+            Created :class:`~hyperping.models.Outage` object.
+
+        Raises:
+            HyperpingValidationError: If the payload fails server-side validation.
+            HyperpingAPIError: On unexpected API errors.
+        """
+        payload = {"monitor_uuid": monitor_uuid}
+        result = await self._request("POST", Endpoint.OUTAGES, json=payload)
+        return Outage.model_validate(expect_dict(result, "create_outage"))
+
+    async def get_outage(self, outage_id: str) -> Outage:
+        """Get a single outage by ID.
+
+        Args:
+            outage_id: Outage UUID.
+
+        Returns:
+            :class:`~hyperping.models.Outage` object.
+
+        Raises:
+            HyperpingNotFoundError: If outage not found.
+        """
+        validate_id(outage_id, "outage_id")
+        result = await self._request("GET", f"{Endpoint.OUTAGES}/{outage_id}")
+        return Outage.model_validate(expect_dict(result, "get_outage"))
