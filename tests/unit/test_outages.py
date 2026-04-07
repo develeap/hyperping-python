@@ -7,6 +7,7 @@ import respx
 from hyperping.client import HyperpingClient
 from hyperping.endpoints import API_BASE, Endpoint
 from hyperping.exceptions import HyperpingNotFoundError
+from hyperping.models import OutageAction
 
 
 class TestOutageAPIClient:
@@ -68,7 +69,8 @@ class TestOutageAPIClient:
             return_value=httpx.Response(200, json={"status": "acknowledged"})
         )
         result = client.acknowledge_outage("out_1")
-        assert result["status"] == "acknowledged"
+        assert isinstance(result, OutageAction)
+        assert result.status == "acknowledged"
 
     @respx.mock
     def test_acknowledge_outage_with_message(self, client: HyperpingClient) -> None:
@@ -77,7 +79,8 @@ class TestOutageAPIClient:
             return_value=httpx.Response(200, json={"status": "acknowledged"})
         )
         result = client.acknowledge_outage("out_1", message="On it")
-        assert result["status"] == "acknowledged"
+        assert isinstance(result, OutageAction)
+        assert result.status == "acknowledged"
 
     @respx.mock
     def test_acknowledge_outage_not_found(self, client: HyperpingClient) -> None:
@@ -95,7 +98,8 @@ class TestOutageAPIClient:
             return_value=httpx.Response(200, json={"status": "resolved"})
         )
         result = client.resolve_outage("out_1")
-        assert result["status"] == "resolved"
+        assert isinstance(result, OutageAction)
+        assert result.status == "resolved"
 
     @respx.mock
     def test_resolve_outage_with_message(self, client: HyperpingClient) -> None:
@@ -104,7 +108,8 @@ class TestOutageAPIClient:
             return_value=httpx.Response(200, json={"status": "resolved"})
         )
         result = client.resolve_outage("out_1", message="Fixed the issue")
-        assert result["status"] == "resolved"
+        assert isinstance(result, OutageAction)
+        assert result.status == "resolved"
 
     @respx.mock
     def test_resolve_outage_not_found(self, client: HyperpingClient) -> None:
@@ -122,7 +127,8 @@ class TestOutageAPIClient:
             return_value=httpx.Response(200, json={"status": "escalated"})
         )
         result = client.escalate_outage("out_1")
-        assert result["status"] == "escalated"
+        assert isinstance(result, OutageAction)
+        assert result.status == "escalated"
 
     @respx.mock
     def test_escalate_outage_not_found(self, client: HyperpingClient) -> None:

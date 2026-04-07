@@ -45,7 +45,7 @@ from hyperping.models._monitor_models import (
     ReportPeriod,
     RequestHeader,
 )
-from hyperping.models._outage_models import Outage
+from hyperping.models._outage_models import Outage, OutageAction
 from hyperping.models._statuspage_models import (
     StatusPage,
     StatusPageCreate,
@@ -96,6 +96,7 @@ __all__ = [
     "NotificationOption",
     # Outage models
     "Outage",
+    "OutageAction",
     # Status page models
     "StatusPage",
     "StatusPageCreate",

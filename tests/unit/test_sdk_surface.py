@@ -360,8 +360,9 @@ class TestAllExports:
         "StatusPageCreate",
         "StatusPageUpdate",
         "StatusPageSubscriber",
-        # Outage models (C5)
+        # Outage models (C5, SDK-PY-02)
         "Outage",
+        "OutageAction",
     }
 
     def test_all_contains_expected_exports(self) -> None:
@@ -701,19 +702,25 @@ class TestOutageOperations:
 
     @respx.mock
     def test_acknowledge_outage(self, client: HyperpingClient) -> None:
+        from hyperping.models import OutageAction
+
         respx.post(f"{API_BASE}{Endpoint.OUTAGES}/out_1/acknowledge").mock(
             return_value=httpx.Response(200, json={"status": "acknowledged"})
         )
         result = client.acknowledge_outage("out_1", message="On it")
-        assert result["status"] == "acknowledged"
+        assert isinstance(result, OutageAction)
+        assert result.status == "acknowledged"
 
     @respx.mock
     def test_resolve_outage(self, client: HyperpingClient) -> None:
+        from hyperping.models import OutageAction
+
         respx.post(f"{API_BASE}{Endpoint.OUTAGES}/out_1/resolve").mock(
             return_value=httpx.Response(200, json={"status": "resolved"})
         )
         result = client.resolve_outage("out_1", message="Fixed")
-        assert result["status"] == "resolved"
+        assert isinstance(result, OutageAction)
+        assert result.status == "resolved"
 
 
 class TestReportOperations:
