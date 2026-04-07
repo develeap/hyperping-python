@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable
 from typing import Any, TypeVar
 
 from pydantic import ValidationError
@@ -133,7 +134,7 @@ def parse_list(
 
 
 def collect_all_pages(
-    request_fn: Any,
+    request_fn: Callable[..., dict[str, Any] | list[dict[str, Any]]],
     endpoint: str,
     items_key: str,
     base_params: dict[str, Any] | None,
@@ -164,6 +165,50 @@ def collect_all_pages(
     while True:
         params["page"] = current_page
         data = request_fn("GET", endpoint, params=params)
+        if isinstance(data, dict):
+            raw: list[Any] = data.get(items_key, [])
+            all_items.extend(parse_list(raw, model_cls, label))
+            if not data.get("hasNextPage", False):
+                break
+        elif isinstance(data, list):
+            all_items.extend(parse_list(data, model_cls, label))
+            break
+        else:
+            break
+        current_page += 1
+    return all_items
+
+
+async def collect_all_pages_async(
+    request_fn: Callable[..., Any],
+    endpoint: str,
+    items_key: str,
+    base_params: dict[str, Any] | None,
+    model_cls: type[T],
+    label: str,
+) -> list[T]:
+    """Async counterpart of :func:`collect_all_pages` for ``AsyncHyperpingClient``.
+
+    Identical logic but ``await``s each page request, suitable for use inside
+    async mixin methods.
+
+    Args:
+        request_fn: The async ``_request`` method of the client.
+        endpoint: API path to GET.
+        items_key: JSON key that holds the list.
+        base_params: Additional query params. Must not contain a ``page`` key.
+        model_cls: Pydantic model class to validate items against.
+        label: Human-readable resource name for log messages.
+
+    Returns:
+        Combined list of all items across all pages.
+    """
+    all_items: list[T] = []
+    current_page = 0
+    params = dict(base_params or {})
+    while True:
+        params["page"] = current_page
+        data = await request_fn("GET", endpoint, params=params)
         if isinstance(data, dict):
             raw: list[Any] = data.get(items_key, [])
             all_items.extend(parse_list(raw, model_cls, label))

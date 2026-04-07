@@ -10,33 +10,78 @@ import logging
 from typing import Any
 
 from hyperping._protocols import _AsyncClientProtocol
-from hyperping._utils import expect_dict, parse_list, validate_id
+from hyperping._utils import (
+    collect_all_pages_async,
+    expect_dict,
+    parse_list,
+    validate_id,
+)
 from hyperping.endpoints import Endpoint
 from hyperping.exceptions import HyperpingNotFoundError
 from hyperping.models import Outage, OutageAction
 
 logger = logging.getLogger(__name__)
 
+_VALID_STATUSES: frozenset[str] = frozenset({"all", "ongoing", "resolved"})
+_VALID_TYPES: frozenset[str] = frozenset({"all", "manual", "monitor"})
+
 
 class AsyncOutagesMixin(_AsyncClientProtocol):
     """Async outage-related API operations."""
 
-    async def list_outages(self) -> list[Outage]:
+    async def list_outages(
+        self,
+        page: int | None = None,
+        status: str = "all",
+        outage_type: str = "all",
+    ) -> list[Outage]:
         """List auto-detected outages.
+
+        The Hyperping outages endpoint is paginated (0-indexed ``page`` param).
+        When *page* is ``None`` (default), all pages are fetched automatically.
+        Pass an explicit ``page`` index to retrieve a single page.
+
+        Args:
+            page: Page index (0-based). ``None`` fetches all pages.
+            status: Filter by outage status. One of ``"all"``, ``"ongoing"``,
+                ``"resolved"``. Default ``"all"``.
+            outage_type: Filter by outage type. One of ``"all"``,
+                ``"manual"``, ``"monitor"``. Default ``"all"``.
 
         Returns:
             List of :class:`~hyperping.models.Outage` objects.
             Empty list if the endpoint is not available (404).
+
+        Raises:
+            ValueError: If *status* or *outage_type* is not a recognised value.
         """
+        if status not in _VALID_STATUSES:
+            raise ValueError(
+                f"Invalid status {status!r}. Valid values: {sorted(_VALID_STATUSES)}"
+            )
+        if outage_type not in _VALID_TYPES:
+            raise ValueError(
+                f"Invalid outage_type {outage_type!r}. Valid values: {sorted(_VALID_TYPES)}"
+            )
+
+        params: dict[str, Any] = {}
+        if status != "all":
+            params["status"] = status
+        if outage_type != "all":
+            params["type"] = outage_type
+
         try:
-            data = await self._request("GET", Endpoint.OUTAGES)
-            if isinstance(data, list):
-                raw: list[Any] = data
-            elif isinstance(data, dict) and "outages" in data:
-                raw = data["outages"]
-            else:
-                return []
-            return parse_list(raw, Outage, "outage")
+            if page is not None:
+                params["page"] = page
+                data = await self._request("GET", Endpoint.OUTAGES, params=params)
+                raw: list[Any] = (
+                    data.get("outages", []) if isinstance(data, dict)
+                    else (data if isinstance(data, list) else [])
+                )
+                return parse_list(raw, Outage, "outage")
+            return await collect_all_pages_async(
+                self._request, Endpoint.OUTAGES, "outages", params or None, Outage, "outage"
+            )
         except HyperpingNotFoundError:
             logger.debug("Outage endpoint not available (404)")
             return []

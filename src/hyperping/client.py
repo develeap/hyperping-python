@@ -25,11 +25,11 @@ from hyperping._circuit_breaker import (
 )
 from hyperping._healthchecks_mixin import HealthchecksMixin
 from hyperping._incidents_mixin import IncidentsMixin
+from hyperping._internals import DEFAULT_USER_AGENT, RETRY_AFTER_MAX, sanitize_for_log
 from hyperping._maintenance_mixin import MaintenanceMixin
 from hyperping._monitors_mixin import MonitorsMixin
 from hyperping._outages_mixin import OutagesMixin
 from hyperping._statuspages_mixin import StatusPagesMixin
-from hyperping._version import __version__
 from hyperping.endpoints import API_BASE
 from hyperping.exceptions import (
     HyperpingAPIError,
@@ -40,13 +40,6 @@ from hyperping.exceptions import (
 )
 
 logger = logging.getLogger(__name__)
-
-_DEFAULT_USER_AGENT = f"hyperping-python/{__version__}"
-
-# Known JSON body keys whose values must not appear in debug logs (M15)
-_SENSITIVE_LOG_KEYS = frozenset(
-    {"authorization", "x-api-key", "api_key", "request_headers", "request_body"}
-)
 
 
 @dataclass(frozen=True)
@@ -63,22 +56,6 @@ class RetryConfig:
 DEFAULT_RETRY_CONFIG = RetryConfig()
 # intentionally internal — not in __all__; exported from _circuit_breaker counterpart
 # DEFAULT_CIRCUIT_BREAKER_CONFIG is exported from _circuit_breaker (M7)
-
-# Maximum time to honour a server-requested Retry-After value (5 minutes)
-_RETRY_AFTER_MAX = 300.0
-
-
-def _sanitize_for_log(data: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Return a copy of *data* with sensitive values replaced by ``[REDACTED]``.
-
-    Prevents tokens and header values from leaking into DEBUG-level log output.
-    """
-    if data is None:
-        return None
-    return {
-        k: "[REDACTED]" if k.lower() in _SENSITIVE_LOG_KEYS else v
-        for k, v in data.items()
-    }
 
 
 class HyperpingClient(
@@ -138,7 +115,7 @@ class HyperpingClient(
                 "Authorization": f"Bearer {self._api_key.get_secret_value()}",
                 "Content-Type": "application/json",
                 "Accept": "application/json",
-                "User-Agent": user_agent or _DEFAULT_USER_AGENT,
+                "User-Agent": user_agent or DEFAULT_USER_AGENT,
             },
             timeout=self.timeout,
         )
@@ -260,7 +237,7 @@ class HyperpingClient(
         """Compute how long to sleep before retrying a failed request (C2).
 
         For 429 responses the server-provided ``Retry-After`` value is used
-        (capped at :data:`_RETRY_AFTER_MAX`). For all other retryable statuses,
+        (capped at :data:`RETRY_AFTER_MAX`). For all other retryable statuses,
         exponential backoff with ±25% jitter is applied.
 
         Args:
@@ -274,7 +251,7 @@ class HyperpingClient(
             retry_after = response.headers.get("Retry-After")
             if retry_after:
                 try:
-                    return min(float(retry_after), _RETRY_AFTER_MAX)
+                    return min(float(retry_after), RETRY_AFTER_MAX)
                 except (ValueError, OverflowError):
                     # RFC 7231 allows HTTP-date strings in Retry-After;
                     # fall through to exponential backoff if unparseable.
@@ -318,8 +295,8 @@ class HyperpingClient(
             method,
             path,
             extra={
-                "json": _sanitize_for_log(json),  # M15: redact sensitive fields
-                "params": _sanitize_for_log(params),
+                "json": sanitize_for_log(json),  # M15: redact sensitive fields
+                "params": sanitize_for_log(params),
             },
         )
 

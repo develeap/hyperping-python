@@ -13,6 +13,7 @@ from typing import Any
 from hyperping._protocols import _ClientProtocol
 from hyperping._utils import collect_all_pages, expect_dict, parse_list, unwrap_list, validate_id
 from hyperping.endpoints import Endpoint
+from hyperping.exceptions import HyperpingNotFoundError
 from hyperping.models import (
     StatusPage,
     StatusPageCreate,
@@ -58,13 +59,17 @@ class StatusPagesMixin(_ClientProtocol):
 
         if page is not None:
             params["page"] = page
-            response = self._request("GET", Endpoint.STATUSPAGES, params=params or None)
+            response = self._request("GET", Endpoint.STATUSPAGES, params=params)
             return parse_list(unwrap_list(response, "statuspages"), StatusPage, "status page")
 
-        return collect_all_pages(
-            self._request, Endpoint.STATUSPAGES, "statuspages",
-            params or None, StatusPage, "status page",
-        )
+        try:
+            return collect_all_pages(
+                self._request, Endpoint.STATUSPAGES, "statuspages",
+                params or None, StatusPage, "status page",
+            )
+        except HyperpingNotFoundError:
+            logger.debug("Status pages endpoint not available (404)")
+            return []
 
     def get_status_page(self, status_page_id: str) -> StatusPage:
         """Get a single status page by ID.
@@ -171,7 +176,7 @@ class StatusPagesMixin(_ClientProtocol):
 
         if page is not None:
             params["page"] = page
-            response = self._request("GET", endpoint, params=params or None)
+            response = self._request("GET", endpoint, params=params)
             return parse_list(
                 unwrap_list(response, "subscribers"), StatusPageSubscriber, "subscriber"
             )

@@ -710,3 +710,257 @@ class TestAsyncRetryAfter:
         slept = mock_sleep.await_args[0][0]
         assert slept == 5.0
         await client.close()
+
+
+# ==================== Outages mixin (pagination) ====================
+
+
+class TestAsyncOutagesPagination:
+    """Tests for pagination paths in AsyncOutagesMixin."""
+
+    @pytest.mark.asyncio
+    async def test_list_outages_invalid_status(self) -> None:
+        """list_outages raises ValueError for unknown status."""
+        async with AsyncHyperpingClient(
+            api_key="sk_test", retry_config=RetryConfig(max_retries=0)
+        ) as client:
+            with pytest.raises(ValueError, match="Invalid status"):
+                await client.list_outages(status="unknown")
+
+    @pytest.mark.asyncio
+    async def test_list_outages_invalid_type(self) -> None:
+        """list_outages raises ValueError for unknown outage_type."""
+        async with AsyncHyperpingClient(
+            api_key="sk_test", retry_config=RetryConfig(max_retries=0)
+        ) as client:
+            with pytest.raises(ValueError, match="Invalid outage_type"):
+                await client.list_outages(outage_type="bad")
+
+    @pytest.mark.asyncio
+    async def test_list_outages_explicit_page(self) -> None:
+        """list_outages with explicit page returns single-page results."""
+        payload = {
+            "outages": [{"uuid": "out_p1", "monitor_uuid": "mon_1", "status": "active"}]
+        }
+        async with AsyncHyperpingClient(
+            api_key="sk_test", retry_config=RetryConfig(max_retries=0)
+        ) as client:
+            client._client.request = AsyncMock(return_value=_mock_ok(payload))
+            outages = await client.list_outages(page=0)
+        assert len(outages) == 1
+        assert outages[0].uuid == "out_p1"
+
+    @pytest.mark.asyncio
+    async def test_list_outages_with_status_filter(self) -> None:
+        """list_outages with status filter passes param and auto-paginates."""
+        payload = {
+            "outages": [{"uuid": "out_ongoing", "monitor_uuid": "mon_1", "status": "active"}],
+            "hasNextPage": False,
+        }
+        async with AsyncHyperpingClient(
+            api_key="sk_test", retry_config=RetryConfig(max_retries=0)
+        ) as client:
+            client._client.request = AsyncMock(return_value=_mock_ok(payload))
+            outages = await client.list_outages(status="ongoing")
+        assert len(outages) == 1
+
+    @pytest.mark.asyncio
+    async def test_list_outages_multipage(self) -> None:
+        """list_outages auto-paginates when hasNextPage is True."""
+        page1 = {
+            "outages": [{"uuid": "out_1", "monitor_uuid": "mon_1", "status": "active"}],
+            "hasNextPage": True,
+        }
+        page2 = {
+            "outages": [{"uuid": "out_2", "monitor_uuid": "mon_2", "status": "active"}],
+            "hasNextPage": False,
+        }
+        async with AsyncHyperpingClient(
+            api_key="sk_test", retry_config=RetryConfig(max_retries=0)
+        ) as client:
+            client._client.request = AsyncMock(
+                side_effect=[_mock_ok(page1), _mock_ok(page2)]
+            )
+            outages = await client.list_outages()
+        assert len(outages) == 2
+
+
+# ==================== StatusPages mixin ====================
+
+
+class TestAsyncStatusPagesMixin:
+    """Tests for AsyncStatusPagesMixin methods."""
+
+    @pytest.mark.asyncio
+    async def test_list_status_pages(self) -> None:
+        """list_status_pages returns StatusPage objects."""
+        from hyperping.models import StatusPage
+
+        payload = {
+            "statuspages": [
+                {
+                    "uuid": "sp_1",
+                    "name": "My Status Page",
+                    "subdomain": "mystatus",
+                    "monitors": [],
+                }
+            ],
+            "hasNextPage": False,
+        }
+        async with AsyncHyperpingClient(
+            api_key="sk_test", retry_config=RetryConfig(max_retries=0)
+        ) as client:
+            client._client.request = AsyncMock(return_value=_mock_ok(payload))
+            pages = await client.list_status_pages()
+        assert len(pages) == 1
+        assert isinstance(pages[0], StatusPage)
+
+    @pytest.mark.asyncio
+    async def test_list_status_pages_explicit_page(self) -> None:
+        """list_status_pages with explicit page returns single-page results."""
+        payload = {
+            "statuspages": [
+                {
+                    "uuid": "sp_2",
+                    "name": "Page 2",
+                    "subdomain": "page2",
+                    "monitors": [],
+                }
+            ]
+        }
+        async with AsyncHyperpingClient(
+            api_key="sk_test", retry_config=RetryConfig(max_retries=0)
+        ) as client:
+            client._client.request = AsyncMock(return_value=_mock_ok(payload))
+            pages = await client.list_status_pages(page=0)
+        assert len(pages) == 1
+
+    @pytest.mark.asyncio
+    async def test_list_status_pages_404_returns_empty(self) -> None:
+        """list_status_pages returns empty list on 404."""
+        async with AsyncHyperpingClient(
+            api_key="sk_test", retry_config=RetryConfig(max_retries=0)
+        ) as client:
+            client._client.request = AsyncMock(
+                return_value=_mock_err(404, {"error": "Not found"})
+            )
+            pages = await client.list_status_pages()
+        assert pages == []
+
+    @pytest.mark.asyncio
+    async def test_get_status_page(self) -> None:
+        """get_status_page returns a StatusPage for valid ID."""
+        payload = {"uuid": "sp_3", "name": "Test Page", "subdomain": "test", "monitors": []}
+        async with AsyncHyperpingClient(
+            api_key="sk_test", retry_config=RetryConfig(max_retries=0)
+        ) as client:
+            client._client.request = AsyncMock(return_value=_mock_ok(payload))
+            page = await client.get_status_page("sp_3")
+        assert page.uuid == "sp_3"
+
+    @pytest.mark.asyncio
+    async def test_create_status_page(self) -> None:
+        """create_status_page returns created StatusPage."""
+        from hyperping.models import StatusPageCreate
+
+        payload = {
+            "uuid": "sp_new",
+            "name": "New Page",
+            "subdomain": "newpage",
+            "monitors": [],
+        }
+        async with AsyncHyperpingClient(
+            api_key="sk_test", retry_config=RetryConfig(max_retries=0)
+        ) as client:
+            client._client.request = AsyncMock(return_value=_mock_ok(payload))
+            result = await client.create_status_page(
+                StatusPageCreate(name="New Page", subdomain="newpage")
+            )
+        assert result.uuid == "sp_new"
+
+    @pytest.mark.asyncio
+    async def test_update_status_page(self) -> None:
+        """update_status_page returns updated StatusPage."""
+        from hyperping.models import StatusPageUpdate
+
+        payload = {"uuid": "sp_u", "name": "Updated", "subdomain": "updated", "monitors": []}
+        async with AsyncHyperpingClient(
+            api_key="sk_test", retry_config=RetryConfig(max_retries=0)
+        ) as client:
+            client._client.request = AsyncMock(return_value=_mock_ok(payload))
+            result = await client.update_status_page("sp_u", StatusPageUpdate(name="Updated"))
+        assert result.name == "Updated"
+
+    @pytest.mark.asyncio
+    async def test_delete_status_page(self) -> None:
+        """delete_status_page completes without error on 204."""
+        r = MagicMock(spec=httpx.Response)
+        r.status_code = 204
+        r.headers = {}
+        async with AsyncHyperpingClient(
+            api_key="sk_test", retry_config=RetryConfig(max_retries=0)
+        ) as client:
+            client._client.request = AsyncMock(return_value=r)
+            await client.delete_status_page("sp_del")
+
+    @pytest.mark.asyncio
+    async def test_list_subscribers(self) -> None:
+        """list_subscribers returns StatusPageSubscriber objects."""
+        from hyperping.models import StatusPageSubscriber
+
+        payload = {
+            "subscribers": [{"id": "sub_1", "email": "test@example.com", "type": "email"}],
+            "hasNextPage": False,
+        }
+        async with AsyncHyperpingClient(
+            api_key="sk_test", retry_config=RetryConfig(max_retries=0)
+        ) as client:
+            client._client.request = AsyncMock(return_value=_mock_ok(payload))
+            subs = await client.list_subscribers("sp_1")
+        assert len(subs) == 1
+        assert isinstance(subs[0], StatusPageSubscriber)
+
+    @pytest.mark.asyncio
+    async def test_list_subscribers_explicit_page(self) -> None:
+        """list_subscribers with explicit page returns single-page results."""
+        payload = {
+            "subscribers": [{"id": "sub_2", "email": "a@b.com", "type": "email"}]
+        }
+        async with AsyncHyperpingClient(
+            api_key="sk_test", retry_config=RetryConfig(max_retries=0)
+        ) as client:
+            client._client.request = AsyncMock(return_value=_mock_ok(payload))
+            subs = await client.list_subscribers("sp_1", page=0)
+        assert len(subs) == 1
+
+    @pytest.mark.asyncio
+    async def test_add_subscriber(self) -> None:
+        """add_subscriber returns created StatusPageSubscriber."""
+        payload = {"id": "sub_new", "email": "new@example.com", "type": "email"}
+        async with AsyncHyperpingClient(
+            api_key="sk_test", retry_config=RetryConfig(max_retries=0)
+        ) as client:
+            client._client.request = AsyncMock(return_value=_mock_ok(payload))
+            result = await client.add_subscriber("sp_1", "new@example.com")
+        assert result.email == "new@example.com"
+
+    @pytest.mark.asyncio
+    async def test_add_subscriber_invalid_email(self) -> None:
+        """add_subscriber raises ValueError for malformed email."""
+        async with AsyncHyperpingClient(
+            api_key="sk_test", retry_config=RetryConfig(max_retries=0)
+        ) as client:
+            with pytest.raises(ValueError, match="Invalid email"):
+                await client.add_subscriber("sp_1", "not-an-email")
+
+    @pytest.mark.asyncio
+    async def test_remove_subscriber(self) -> None:
+        """remove_subscriber completes without error on 204."""
+        r = MagicMock(spec=httpx.Response)
+        r.status_code = 204
+        r.headers = {}
+        async with AsyncHyperpingClient(
+            api_key="sk_test", retry_config=RetryConfig(max_retries=0)
+        ) as client:
+            client._client.request = AsyncMock(return_value=r)
+            await client.remove_subscriber("sp_1", "sub_1")

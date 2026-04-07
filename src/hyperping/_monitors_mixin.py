@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Literal
 
+from hyperping._monitor_constants import MONITOR_WRITABLE_FIELDS, VALID_PERIODS
 from hyperping._protocols import _ClientProtocol
 from hyperping._utils import expect_dict, parse_list, unwrap_list, validate_id
 from hyperping.endpoints import Endpoint
@@ -21,33 +22,6 @@ from hyperping.models import (
 )
 
 logger = logging.getLogger(__name__)
-
-# Valid period values for reporting endpoints (M9)
-_VALID_PERIODS: frozenset[str] = frozenset({"1h", "24h", "7d", "30d", "90d"})
-
-# Writable fields for the Hyperping monitor PUT endpoint (M19: module-level constant)
-_MONITOR_WRITABLE_FIELDS: frozenset[str] = frozenset(
-    {
-        "name",
-        "url",
-        "protocol",
-        "http_method",
-        "check_frequency",
-        "regions",
-        "request_headers",
-        "request_body",
-        "follow_redirects",
-        "expected_status_code",
-        "required_keyword",
-        "paused",
-        "port",
-        "alerts_wait",
-        "escalation_policy",
-        "dns_record_type",
-        "dns_nameserver",
-        "dns_expected_answer",
-    }
-)
 
 
 class MonitorsMixin(_ClientProtocol):
@@ -133,7 +107,7 @@ class MonitorsMixin(_ClientProtocol):
         payload: dict[str, Any] = current.model_dump(
             mode="json",
             exclude_none=True,
-            include=set(_MONITOR_WRITABLE_FIELDS),
+            include=set(MONITOR_WRITABLE_FIELDS),
         )
 
         # Apply the requested changes on top of current state
@@ -196,9 +170,9 @@ class MonitorsMixin(_ClientProtocol):
             HyperpingAuthError: If the API key is invalid.
             HyperpingAPIError: On unexpected API errors.
         """
-        if period not in _VALID_PERIODS:
+        if period not in VALID_PERIODS:
             raise ValueError(
-                f"Invalid period {period!r}. Valid values: {sorted(_VALID_PERIODS)}"
+                f"Invalid period {period!r}. Valid values: {sorted(VALID_PERIODS)}"
             )
         response = expect_dict(
             self._request("GET", Endpoint.REPORTS, params={"period": period}),

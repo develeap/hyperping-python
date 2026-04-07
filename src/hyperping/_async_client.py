@@ -29,8 +29,8 @@ from hyperping._circuit_breaker import (
     CircuitBreaker,
     CircuitBreakerConfig,
 )
-from hyperping._version import __version__
-from hyperping.client import _RETRY_AFTER_MAX, DEFAULT_RETRY_CONFIG, RetryConfig, _sanitize_for_log
+from hyperping._internals import DEFAULT_USER_AGENT, RETRY_AFTER_MAX, sanitize_for_log
+from hyperping.client import DEFAULT_RETRY_CONFIG, RetryConfig
 from hyperping.endpoints import API_BASE
 from hyperping.exceptions import (
     HyperpingAPIError,
@@ -39,8 +39,6 @@ from hyperping.exceptions import (
 )
 
 logger = logging.getLogger(__name__)
-
-_DEFAULT_USER_AGENT = f"hyperping-python/{__version__}"
 
 
 class AsyncHyperpingClient(
@@ -102,7 +100,7 @@ class AsyncHyperpingClient(
                 "Authorization": f"Bearer {self._api_key.get_secret_value()}",
                 "Content-Type": "application/json",
                 "Accept": "application/json",
-                "User-Agent": user_agent or _DEFAULT_USER_AGENT,
+                "User-Agent": user_agent or DEFAULT_USER_AGENT,
             },
             timeout=self.timeout,
         )
@@ -202,7 +200,7 @@ class AsyncHyperpingClient(
             retry_after = response.headers.get("Retry-After")
             if retry_after:
                 try:
-                    return min(float(retry_after), _RETRY_AFTER_MAX)
+                    return min(float(retry_after), RETRY_AFTER_MAX)
                 except (ValueError, OverflowError):
                     pass
         return delay + random.uniform(0, delay * 0.25)
@@ -227,8 +225,8 @@ class AsyncHyperpingClient(
             method,
             path,
             extra={
-                "json": _sanitize_for_log(json),
-                "params": _sanitize_for_log(params),
+                "json": sanitize_for_log(json),
+                "params": sanitize_for_log(params),
             },
         )
 

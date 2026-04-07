@@ -17,6 +17,9 @@ from hyperping.models import Outage, OutageAction
 
 logger = logging.getLogger(__name__)
 
+_VALID_STATUSES: frozenset[str] = frozenset({"all", "ongoing", "resolved"})
+_VALID_TYPES: frozenset[str] = frozenset({"all", "manual", "monitor"})
+
 
 class OutagesMixin(_ClientProtocol):
     """Outage-related API operations."""
@@ -43,7 +46,19 @@ class OutagesMixin(_ClientProtocol):
         Returns:
             List of :class:`~hyperping.models.Outage` objects.
             Empty list if the endpoint is not available (404).
+
+        Raises:
+            ValueError: If *status* or *outage_type* is not a recognised value.
         """
+        if status not in _VALID_STATUSES:
+            raise ValueError(
+                f"Invalid status {status!r}. Valid values: {sorted(_VALID_STATUSES)}"
+            )
+        if outage_type not in _VALID_TYPES:
+            raise ValueError(
+                f"Invalid outage_type {outage_type!r}. Valid values: {sorted(_VALID_TYPES)}"
+            )
+
         params: dict[str, Any] = {}
         if status != "all":
             params["status"] = status
@@ -53,7 +68,7 @@ class OutagesMixin(_ClientProtocol):
         try:
             if page is not None:
                 params["page"] = page
-                data = self._request("GET", Endpoint.OUTAGES, params=params or None)
+                data = self._request("GET", Endpoint.OUTAGES, params=params)
                 raw: list[Any] = (
                     data.get("outages", []) if isinstance(data, dict)
                     else (data if isinstance(data, list) else [])
