@@ -299,7 +299,8 @@ class TestAllExports:
     """Verify __all__ is complete -- every public name is exported."""
 
     EXPECTED_EXPORTS = {
-        # Client
+        # Clients
+        "AsyncHyperpingClient",
         "HyperpingClient",
         # Configuration
         "RetryConfig",
