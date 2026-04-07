@@ -9,6 +9,11 @@ accessible but emit a :class:`DeprecationWarning` on first import. They will
 be removed in v0.3.0.
 """
 
+from hyperping.models._healthcheck_models import (
+    Healthcheck,
+    HealthcheckCreate,
+    HealthcheckUpdate,
+)
 from hyperping.models._incident_models import (
     AddIncidentUpdateRequest,
     Incident,
@@ -97,6 +102,10 @@ __all__ = [
     # Outage models
     "Outage",
     "OutageAction",
+    # Healthcheck models
+    "Healthcheck",
+    "HealthcheckCreate",
+    "HealthcheckUpdate",
     # Status page models
     "StatusPage",
     "StatusPageCreate",

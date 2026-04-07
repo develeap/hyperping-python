@@ -23,6 +23,7 @@ from hyperping._circuit_breaker import (
     CircuitBreakerConfig,
     CircuitState,
 )
+from hyperping._healthchecks_mixin import HealthchecksMixin
 from hyperping._incidents_mixin import IncidentsMixin
 from hyperping._maintenance_mixin import MaintenanceMixin
 from hyperping._monitors_mixin import MonitorsMixin
@@ -81,7 +82,8 @@ def _sanitize_for_log(data: dict[str, Any] | None) -> dict[str, Any] | None:
 
 
 class HyperpingClient(
-    MonitorsMixin, IncidentsMixin, MaintenanceMixin, OutagesMixin, StatusPagesMixin
+    MonitorsMixin, IncidentsMixin, MaintenanceMixin, OutagesMixin, StatusPagesMixin,
+    HealthchecksMixin,
 ):
     """Client for interacting with Hyperping API.
 
