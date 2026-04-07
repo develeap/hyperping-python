@@ -10,7 +10,7 @@ import logging
 from typing import Any
 
 from hyperping._protocols import _ClientProtocol
-from hyperping._utils import expect_dict, parse_list, validate_id
+from hyperping._utils import collect_all_pages, expect_dict, parse_list, validate_id
 from hyperping.endpoints import Endpoint
 from hyperping.exceptions import HyperpingNotFoundError
 from hyperping.models import Outage, OutageAction
@@ -21,22 +21,47 @@ logger = logging.getLogger(__name__)
 class OutagesMixin(_ClientProtocol):
     """Outage-related API operations."""
 
-    def list_outages(self) -> list[Outage]:
+    def list_outages(
+        self,
+        page: int | None = None,
+        status: str = "all",
+        outage_type: str = "all",
+    ) -> list[Outage]:
         """List auto-detected outages.
+
+        The Hyperping outages endpoint is paginated (0-indexed ``page`` param).
+        When *page* is ``None`` (default), all pages are fetched automatically.
+        Pass an explicit ``page`` index to retrieve a single page.
+
+        Args:
+            page: Page index (0-based). ``None`` fetches all pages.
+            status: Filter by outage status. One of ``"all"``, ``"ongoing"``,
+                ``"resolved"``. Default ``"all"``.
+            outage_type: Filter by outage type. One of ``"all"``,
+                ``"manual"``, ``"monitor"``. Default ``"all"``.
 
         Returns:
             List of :class:`~hyperping.models.Outage` objects.
             Empty list if the endpoint is not available (404).
         """
+        params: dict[str, Any] = {}
+        if status != "all":
+            params["status"] = status
+        if outage_type != "all":
+            params["type"] = outage_type
+
         try:
-            data = self._request("GET", Endpoint.OUTAGES)
-            if isinstance(data, list):
-                raw: list[Any] = data
-            elif isinstance(data, dict) and "outages" in data:
-                raw = data["outages"]
-            else:
-                return []
-            return parse_list(raw, Outage, "outage")
+            if page is not None:
+                params["page"] = page
+                data = self._request("GET", Endpoint.OUTAGES, params=params or None)
+                raw: list[Any] = (
+                    data.get("outages", []) if isinstance(data, dict)
+                    else (data if isinstance(data, list) else [])
+                )
+                return parse_list(raw, Outage, "outage")
+            return collect_all_pages(
+                self._request, Endpoint.OUTAGES, "outages", params or None, Outage, "outage"
+            )
         except HyperpingNotFoundError:
             logger.debug("Outage endpoint not available (404)")
             return []

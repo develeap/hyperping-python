@@ -130,3 +130,49 @@ def parse_list(
         )
 
     return results
+
+
+def collect_all_pages(
+    request_fn: Any,
+    endpoint: str,
+    items_key: str,
+    base_params: dict[str, Any] | None,
+    model_cls: type[T],
+    label: str,
+) -> list[T]:
+    """Auto-paginate a Hyperping endpoint until ``hasNextPage`` is false.
+
+    Collects all pages for endpoints that use the ``page`` (0-indexed) query
+    parameter and return ``{"hasNextPage": bool, "<items_key>": [...]}`` in
+    their response envelope.
+
+    Args:
+        request_fn: The ``_request`` method of the client (callable).
+        endpoint: API path to GET (e.g., ``Endpoint.OUTAGES``).
+        items_key: JSON key that holds the list (e.g., ``"outages"``).
+        base_params: Additional query params (filters, search). Must not
+            contain a ``page`` key; that is managed by this function.
+        model_cls: Pydantic model class to validate items against.
+        label: Human-readable resource name for log messages.
+
+    Returns:
+        Combined list of all items across all pages.
+    """
+    all_items: list[T] = []
+    current_page = 0
+    params = dict(base_params or {})
+    while True:
+        params["page"] = current_page
+        data = request_fn("GET", endpoint, params=params)
+        if isinstance(data, dict):
+            raw: list[Any] = data.get(items_key, [])
+            all_items.extend(parse_list(raw, model_cls, label))
+            if not data.get("hasNextPage", False):
+                break
+        elif isinstance(data, list):
+            all_items.extend(parse_list(data, model_cls, label))
+            break
+        else:
+            break
+        current_page += 1
+    return all_items

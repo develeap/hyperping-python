@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import logging
 import re
+from typing import Any
 
 from hyperping._protocols import _ClientProtocol
-from hyperping._utils import expect_dict, parse_list, unwrap_list, validate_id
+from hyperping._utils import collect_all_pages, expect_dict, parse_list, unwrap_list, validate_id
 from hyperping.endpoints import Endpoint
 from hyperping.models import (
     StatusPage,
@@ -28,11 +29,20 @@ _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 class StatusPagesMixin(_ClientProtocol):
     """Status page-related API operations."""
 
-    def list_status_pages(self, search: str | None = None) -> list[StatusPage]:
+    def list_status_pages(
+        self,
+        page: int | None = None,
+        search: str | None = None,
+    ) -> list[StatusPage]:
         """List all status pages.
 
+        The Hyperping statuspages endpoint is paginated (0-indexed ``page``
+        param). When *page* is ``None`` (default), all pages are fetched
+        automatically.
+
         Args:
-            search: Optional search query to filter by name.
+            page: Page index (0-based). ``None`` fetches all pages.
+            search: Filter by name, hostname, or subdomain.
 
         Returns:
             List of :class:`StatusPage` objects. Pages that fail to parse
@@ -42,16 +52,19 @@ class StatusPagesMixin(_ClientProtocol):
             HyperpingAuthError: If the API key is invalid.
             HyperpingAPIError: On unexpected API errors.
         """
-        query_params: dict[str, str] = {}
+        params: dict[str, Any] = {}
         if search:
-            query_params["search"] = search
+            params["search"] = search
 
-        response = self._request(
-            "GET",
-            Endpoint.STATUSPAGES,
-            params=query_params or None,
+        if page is not None:
+            params["page"] = page
+            response = self._request("GET", Endpoint.STATUSPAGES, params=params or None)
+            return parse_list(unwrap_list(response, "statuspages"), StatusPage, "status page")
+
+        return collect_all_pages(
+            self._request, Endpoint.STATUSPAGES, "statuspages",
+            params or None, StatusPage, "status page",
         )
-        return parse_list(unwrap_list(response, "statuspages"), StatusPage, "status page")
 
     def get_status_page(self, status_page_id: str) -> StatusPage:
         """Get a single status page by ID.
@@ -125,11 +138,23 @@ class StatusPagesMixin(_ClientProtocol):
         validate_id(status_page_id, "status_page_id")  # H8
         self._request("DELETE", f"{Endpoint.STATUSPAGES}/{status_page_id}")
 
-    def list_subscribers(self, status_page_id: str) -> list[StatusPageSubscriber]:
+    def list_subscribers(
+        self,
+        status_page_id: str,
+        page: int | None = None,
+        subscriber_type: str = "all",
+    ) -> list[StatusPageSubscriber]:
         """List subscribers for a status page.
+
+        The Hyperping subscribers endpoint is paginated (0-indexed ``page``
+        param). When *page* is ``None`` (default), all pages are fetched
+        automatically.
 
         Args:
             status_page_id: Status page UUID.
+            page: Page index (0-based). ``None`` fetches all pages.
+            subscriber_type: Filter by type. One of ``"all"``, ``"email"``,
+                ``"sms"``, ``"slack"``, ``"teams"``. Default ``"all"``.
 
         Returns:
             List of :class:`StatusPageSubscriber` objects.
@@ -139,11 +164,21 @@ class StatusPagesMixin(_ClientProtocol):
             HyperpingAPIError: On unexpected API errors.
         """
         validate_id(status_page_id, "status_page_id")  # H8
-        response = self._request(
-            "GET", f"{Endpoint.STATUSPAGES}/{status_page_id}/subscribers"
-        )
-        return parse_list(
-            unwrap_list(response, "subscribers"), StatusPageSubscriber, "subscriber"
+        endpoint = f"{Endpoint.STATUSPAGES}/{status_page_id}/subscribers"
+        params: dict[str, Any] = {}
+        if subscriber_type != "all":
+            params["type"] = subscriber_type
+
+        if page is not None:
+            params["page"] = page
+            response = self._request("GET", endpoint, params=params or None)
+            return parse_list(
+                unwrap_list(response, "subscribers"), StatusPageSubscriber, "subscriber"
+            )
+
+        return collect_all_pages(
+            self._request, endpoint, "subscribers",
+            params or None, StatusPageSubscriber, "subscriber",
         )
 
     def add_subscriber(self, status_page_id: str, email: str) -> StatusPageSubscriber:
