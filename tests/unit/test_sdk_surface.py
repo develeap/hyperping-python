@@ -363,6 +363,10 @@ class TestAllExports:
         # Outage models (C5, SDK-PY-02)
         "Outage",
         "OutageAction",
+        # Healthcheck models (SDK-PY-01)
+        "Healthcheck",
+        "HealthcheckCreate",
+        "HealthcheckUpdate",
     }
 
     def test_all_contains_expected_exports(self) -> None:

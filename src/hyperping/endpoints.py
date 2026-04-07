@@ -132,6 +132,10 @@ class Endpoint(StrEnum):
     STATUSPAGES = "/v2/statuspages"
     """Status page management. Version: v2"""
 
+    # Healthchecks - v2
+    HEALTHCHECKS = "/v2/healthchecks"
+    """Healthcheck (cron/heartbeat monitor) management. Version: v2"""
+
 
 # Detailed endpoint metadata for programmatic access
 ENDPOINTS: Final[dict[Endpoint, EndpointConfig]] = {
@@ -165,6 +169,11 @@ ENDPOINTS: Final[dict[Endpoint, EndpointConfig]] = {
         resource="statuspages",
         description="Status page CRUD, subscribers management",
     ),
+    Endpoint.HEALTHCHECKS: EndpointConfig(
+        version=APIVersion.V2,
+        resource="healthchecks",
+        description="Healthcheck (cron/heartbeat) CRUD and pause/resume",
+    ),
 }
 
 
@@ -185,6 +194,7 @@ API_PATHS: Final[dict[str, str]] = {
     "reports": Endpoint.REPORTS.value,
     "outages": Endpoint.OUTAGES.value,
     "statuspages": Endpoint.STATUSPAGES.value,
+    "healthchecks": Endpoint.HEALTHCHECKS.value,
 }
 """Deprecated: Use Endpoint enum instead for type safety."""
 

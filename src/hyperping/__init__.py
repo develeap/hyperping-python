@@ -38,6 +38,9 @@ from hyperping.models import (
     DEFAULT_REGIONS,
     AddIncidentUpdateRequest,
     DnsRecordType,
+    Healthcheck,
+    HealthcheckCreate,
+    HealthcheckUpdate,
     HttpMethod,
     Incident,
     IncidentCreate,
@@ -132,6 +135,10 @@ __all__ = [
     # Outages
     "Outage",
     "OutageAction",
+    # Healthchecks
+    "Healthcheck",
+    "HealthcheckCreate",
+    "HealthcheckUpdate",
     # Status Pages
     "StatusPage",
     "StatusPageCreate",
