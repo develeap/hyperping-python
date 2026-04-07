@@ -7,6 +7,33 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class OutageAction(BaseModel):
+    """Model for the response returned by outage action endpoints.
+
+    Covers acknowledge, resolve, and escalate operations:
+      - POST /v2/outages/{uuid}/acknowledge
+      - POST /v2/outages/{uuid}/resolve
+      - POST /v2/outages/{uuid}/escalate
+
+    Uses ``extra="ignore"`` to tolerate additional fields the API may return
+    and ``frozen=True`` for immutability.
+    """
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True, frozen=True)
+
+    status: str = Field(
+        ..., description='Action result, e.g. "acknowledged", "resolved", "escalated"'
+    )
+    message: str | None = Field(
+        default=None, description="Optional message included with the action"
+    )
+
+    @classmethod
+    def from_raw(cls, data: dict[str, Any]) -> OutageAction:
+        """Parse an outage action response from a raw API response dict."""
+        return cls.model_validate(data)
+
+
 class Outage(BaseModel):
     """Model for an auto-detected outage from the Hyperping v2 API.
 

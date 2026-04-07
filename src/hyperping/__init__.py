@@ -60,6 +60,7 @@ from hyperping.models import (
     MonitorUpdate,
     NotificationOption,
     Outage,
+    OutageAction,
     OutageDetail,
     OutageStats,
     Region,
@@ -130,6 +131,7 @@ __all__ = [
     "OutageStats",
     # Outages
     "Outage",
+    "OutageAction",
     # Status Pages
     "StatusPage",
     "StatusPageCreate",

@@ -13,7 +13,7 @@ from hyperping._protocols import _ClientProtocol
 from hyperping._utils import expect_dict, parse_list, validate_id
 from hyperping.endpoints import Endpoint
 from hyperping.exceptions import HyperpingNotFoundError
-from hyperping.models import Outage
+from hyperping.models import Outage, OutageAction
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ class OutagesMixin(_ClientProtocol):
             logger.debug("Outage endpoint not available (404)")
             return []
 
-    def acknowledge_outage(self, outage_id: str, message: str | None = None) -> dict[str, Any]:
+    def acknowledge_outage(self, outage_id: str, message: str | None = None) -> OutageAction:
         """Acknowledge an outage.
 
         Args:
@@ -49,7 +49,7 @@ class OutagesMixin(_ClientProtocol):
             message: Optional acknowledgement message.
 
         Returns:
-            API response dict.
+            :class:`~hyperping.models.OutageAction` with the action result.
 
         Raises:
             HyperpingNotFoundError: If outage not found.
@@ -61,9 +61,9 @@ class OutagesMixin(_ClientProtocol):
             f"{Endpoint.OUTAGES}/{outage_id}/acknowledge",
             json=json_body,
         )
-        return expect_dict(result, "outage operation")
+        return OutageAction.from_raw(expect_dict(result, "outage operation"))
 
-    def resolve_outage(self, outage_id: str, message: str | None = None) -> dict[str, Any]:
+    def resolve_outage(self, outage_id: str, message: str | None = None) -> OutageAction:
         """Resolve an outage.
 
         Args:
@@ -71,7 +71,7 @@ class OutagesMixin(_ClientProtocol):
             message: Optional resolution message.
 
         Returns:
-            API response dict.
+            :class:`~hyperping.models.OutageAction` with the action result.
 
         Raises:
             HyperpingNotFoundError: If outage not found.
@@ -83,20 +83,20 @@ class OutagesMixin(_ClientProtocol):
             f"{Endpoint.OUTAGES}/{outage_id}/resolve",
             json=json_body,
         )
-        return expect_dict(result, "outage operation")
+        return OutageAction.from_raw(expect_dict(result, "outage operation"))
 
-    def escalate_outage(self, outage_id: str) -> dict[str, Any]:
+    def escalate_outage(self, outage_id: str) -> OutageAction:
         """Escalate an outage.
 
         Args:
             outage_id: Outage UUID.
 
         Returns:
-            API response dict.
+            :class:`~hyperping.models.OutageAction` with the action result.
 
         Raises:
             HyperpingNotFoundError: If outage not found.
         """
         validate_id(outage_id, "outage_id")  # H8
         result = self._request("POST", f"{Endpoint.OUTAGES}/{outage_id}/escalate")
-        return expect_dict(result, "outage operation")
+        return OutageAction.from_raw(expect_dict(result, "outage operation"))
