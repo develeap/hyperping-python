@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-04-09
+
+### Added
+
+- **`AsyncHyperpingClient`** — full async counterpart to `HyperpingClient`. All resources
+  (monitors, incidents, maintenance, outages, status pages, healthchecks) are available via
+  `await`. Retry logic uses `asyncio.sleep`; circuit breaker and `RetryConfig` are shared with
+  the sync client. Exported from `hyperping` top-level.
+- **`HealthchecksMixin`** — full CRUD for push-based cron/heartbeat monitoring:
+  `list_healthchecks`, `get_healthcheck`, `create_healthcheck`, `update_healthcheck`,
+  `delete_healthcheck`, `pause_healthcheck`, `resume_healthcheck`. `Healthcheck`,
+  `HealthcheckCreate`, `HealthcheckUpdate` models exported from `hyperping`.
+- **Pagination** on `list_outages`, `list_status_pages`, `list_subscribers`. Pass
+  `page=None` (default) to auto-fetch all pages via `hasNextPage`; pass an explicit
+  `int` to retrieve a single page. `status` and `outage_type` filter params added to
+  `list_outages`.
+- **Typed `OutageAction`** return type for `acknowledge_outage`, `resolve_outage`,
+  `escalate_outage`, `unacknowledge_outage` (was `dict[str, Any]`).
+- **`_internals.py`** — shared `RETRY_AFTER_MAX`, `DEFAULT_USER_AGENT`, `sanitize_for_log`
+  used by both sync and async clients (eliminates private cross-module imports).
+- **`_monitor_constants.py`** — shared `VALID_PERIODS`, `MONITOR_WRITABLE_FIELDS`
+  constants used by both sync and async monitor mixins.
+- **`collect_all_pages` / `collect_all_pages_async`** helpers in `_utils.py` for
+  transparent multi-page result aggregation.
+
 ## [1.0.0] - 2026-04-05
 
 First stable release. The public API is production-ready and covered by semver

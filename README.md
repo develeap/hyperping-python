@@ -43,6 +43,24 @@ with HyperpingClient(api_key="sk_...") as client:
     client.resolve_incident(incident.uuid, "All systems operational")
 ```
 
+## Async Client
+
+An async-first client is available for use with `asyncio` and `anyio`-based frameworks:
+
+```python
+from hyperping import AsyncHyperpingClient
+
+async def main():
+    async with AsyncHyperpingClient(api_key="sk_...") as client:
+        monitors = await client.list_monitors()
+        for m in monitors:
+            print(f"{m.name}: {'down' if m.down else 'up'}")
+
+        outage = await client.acknowledge_outage("out_uuid", message="On it")
+```
+
+The async client supports all the same resources, retry behaviour, and circuit breaker as the sync client. Use `RetryConfig` and `CircuitBreakerConfig` in exactly the same way.
+
 ## Authentication
 
 Pass your API key directly or via environment variable:
@@ -103,7 +121,8 @@ in_maint = client.is_monitor_in_maintenance("mon_uuid")
 ### Outages
 
 ```python
-outages = client.list_outages()
+outages = client.list_outages()              # auto-fetches all pages
+outages = client.list_outages(page=0)        # single page
 client.acknowledge_outage("out_uuid", message="On it")
 client.resolve_outage("out_uuid", message="Fixed")
 client.escalate_outage("out_uuid")
@@ -112,16 +131,29 @@ client.escalate_outage("out_uuid")
 ### Status Pages
 
 ```python
-pages = client.list_status_pages(search="prod")
+pages = client.list_status_pages(search="prod")    # auto-fetches all pages
+pages = client.list_status_pages(page=0)            # single page
 page  = client.get_status_page("sp_uuid")
 created = client.create_status_page(StatusPageCreate(name="Prod", subdomain="prod-status"))
 client.update_status_page("sp_uuid", StatusPageUpdate(name="Production Status"))
 client.delete_status_page("sp_uuid")
 
 # Subscribers
-subs = client.list_subscribers("sp_uuid")
+subs = client.list_subscribers("sp_uuid")           # auto-fetches all pages
 sub  = client.add_subscriber("sp_uuid", "user@example.com")
 client.remove_subscriber("sp_uuid", sub.id)
+```
+
+### Healthchecks
+
+```python
+checks = client.list_healthchecks()
+check  = client.get_healthcheck("hc_uuid")
+created = client.create_healthcheck(HealthcheckCreate(name="Nightly Job", period=86400, grace=3600))
+client.update_healthcheck("hc_uuid", HealthcheckUpdate(grace=7200))
+client.pause_healthcheck("hc_uuid")
+client.resume_healthcheck("hc_uuid")
+client.delete_healthcheck("hc_uuid")
 ```
 
 ## Error Handling

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hyperping"
-version = "1.0.1"
+version = "1.1.0"
 description = "Python SDK for the Hyperping uptime monitoring and incident management API"
 readme = {file = "README.md", content-type = "text/markdown"}
 license = {text = "MIT"}
