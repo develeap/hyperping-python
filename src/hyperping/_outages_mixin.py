@@ -140,3 +140,66 @@ class OutagesMixin(_ClientProtocol):
         validate_id(outage_id, "outage_id")  # H8
         result = self._request("POST", f"{Endpoint.OUTAGES}/{outage_id}/escalate")
         return OutageAction.from_raw(expect_dict(result, "outage operation"))
+
+    def unacknowledge_outage(self, outage_id: str) -> OutageAction:
+        """Unacknowledge an outage.
+
+        Args:
+            outage_id: Outage UUID.
+
+        Returns:
+            :class:`~hyperping.models.OutageAction` with the action result.
+
+        Raises:
+            HyperpingNotFoundError: If outage not found.
+        """
+        validate_id(outage_id, "outage_id")  # H8
+        result = self._request(
+            "POST", f"{Endpoint.OUTAGES}/{outage_id}/unacknowledge"
+        )
+        return OutageAction.from_raw(expect_dict(result, "outage operation"))
+
+    def delete_outage(self, outage_id: str) -> None:
+        """Delete an outage.
+
+        Args:
+            outage_id: Outage UUID.
+
+        Raises:
+            HyperpingNotFoundError: If outage not found.
+        """
+        validate_id(outage_id, "outage_id")  # H8
+        self._request("DELETE", f"{Endpoint.OUTAGES}/{outage_id}")
+
+    def create_outage(self, monitor_uuid: str) -> Outage:
+        """Create a manual outage for a monitor.
+
+        Args:
+            monitor_uuid: Monitor UUID to create the outage for.
+
+        Returns:
+            Created :class:`~hyperping.models.Outage` object.
+
+        Raises:
+            HyperpingValidationError: If the payload fails server-side validation.
+            HyperpingAPIError: On unexpected API errors.
+        """
+        payload = {"monitor_uuid": monitor_uuid}
+        result = self._request("POST", Endpoint.OUTAGES, json=payload)
+        return Outage.model_validate(expect_dict(result, "create_outage"))
+
+    def get_outage(self, outage_id: str) -> Outage:
+        """Get a single outage by ID.
+
+        Args:
+            outage_id: Outage UUID.
+
+        Returns:
+            :class:`~hyperping.models.Outage` object.
+
+        Raises:
+            HyperpingNotFoundError: If outage not found.
+        """
+        validate_id(outage_id, "outage_id")  # H8
+        result = self._request("GET", f"{Endpoint.OUTAGES}/{outage_id}")
+        return Outage.model_validate(expect_dict(result, "get_outage"))

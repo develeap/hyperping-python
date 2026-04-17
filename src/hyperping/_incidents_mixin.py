@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from hyperping._protocols import _ClientProtocol
 from hyperping._utils import expect_dict, parse_list, unwrap_list, validate_id
 from hyperping.endpoints import Endpoint
+from hyperping.exceptions import HyperpingAPIError
 from hyperping.models import (
     AddIncidentUpdateRequest,  # canonical name (M18)
     Incident,
@@ -144,7 +145,16 @@ class IncidentsMixin(_ClientProtocol):
         payload = update.model_dump(exclude_none=True, by_alias=True)
         url = f"{Endpoint.INCIDENTS}/{incident_id}/updates"
         self._request("POST", url, json=payload)  # Returns {"message": "..."} — not a full Incident
-        return self.get_incident(incident_id)
+        try:
+            return self.get_incident(incident_id)
+        except HyperpingAPIError as exc:
+            raise HyperpingAPIError(
+                f"Incident update was posted successfully but refreshing "
+                f"incident {incident_id!r} failed: {exc}",
+                status_code=exc.status_code,
+                response_body=exc.response_body,
+                request_id=exc.request_id,
+            ) from exc
 
     def resolve_incident(self, incident_id: str, message: str | None = None) -> Incident:
         """Resolve an incident.
