@@ -125,12 +125,11 @@ class MaintenanceMixin(_ClientProtocol):
         current = self.get_maintenance(maintenance_id)
         partial = update.model_dump(exclude_none=True, by_alias=True, mode="json")
 
-        payload: dict[str, object] = {
-            "name": current.name,
-            "start_date": current.start_date,
-            "end_date": current.end_date,
-            "monitors": current.monitors,
-        }
+        payload: dict[str, object] = current.model_dump(
+            mode="json",
+            exclude_none=True,
+            include={"name", "start_date", "end_date", "monitors"},
+        )
         payload.update(partial)
 
         response = expect_dict(
