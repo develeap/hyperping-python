@@ -136,6 +136,26 @@ class Endpoint(StrEnum):
     HEALTHCHECKS = "/v2/healthchecks"
     """Healthcheck (cron/heartbeat monitor) management. Version: v2"""
 
+    # --- MCP-discovered endpoints (paths are speculative; verify against live API) ---
+
+    ALERTS = "/v2/alerts"
+    """Alert notification history. Version: v2"""
+
+    ON_CALL_SCHEDULES = "/v2/on-call-schedules"
+    """On-call rotation schedules. Version: v2"""
+
+    ESCALATION_POLICIES = "/v2/escalation-policies"
+    """Escalation policy chains. Version: v2"""
+
+    TEAM_MEMBERS = "/v2/team-members"
+    """Team member directory. Version: v2"""
+
+    INTEGRATIONS = "/v2/integrations"
+    """Notification channel integrations. Version: v2"""
+
+    STATUS_SUMMARY = "/v2/status-summary"
+    """Aggregate status counts. Version: v2"""
+
 
 # Detailed endpoint metadata for programmatic access
 ENDPOINTS: Final[dict[Endpoint, EndpointConfig]] = {
@@ -174,6 +194,37 @@ ENDPOINTS: Final[dict[Endpoint, EndpointConfig]] = {
         resource="healthchecks",
         description="Healthcheck (cron/heartbeat) CRUD and pause/resume",
     ),
+    # MCP-discovered (speculative paths)
+    Endpoint.ALERTS: EndpointConfig(
+        version=APIVersion.V2,
+        resource="alerts",
+        description="Alert notification history across channels",
+    ),
+    Endpoint.ON_CALL_SCHEDULES: EndpointConfig(
+        version=APIVersion.V2,
+        resource="on-call-schedules",
+        description="On-call rotation schedules",
+    ),
+    Endpoint.ESCALATION_POLICIES: EndpointConfig(
+        version=APIVersion.V2,
+        resource="escalation-policies",
+        description="Escalation policy chains",
+    ),
+    Endpoint.TEAM_MEMBERS: EndpointConfig(
+        version=APIVersion.V2,
+        resource="team-members",
+        description="Team member name and email directory",
+    ),
+    Endpoint.INTEGRATIONS: EndpointConfig(
+        version=APIVersion.V2,
+        resource="integrations",
+        description="Notification channel configuration",
+    ),
+    Endpoint.STATUS_SUMMARY: EndpointConfig(
+        version=APIVersion.V2,
+        resource="status-summary",
+        description="Aggregate monitor status counts",
+    ),
 }
 
 
@@ -195,6 +246,12 @@ API_PATHS: Final[dict[str, str]] = {
     "outages": Endpoint.OUTAGES.value,
     "statuspages": Endpoint.STATUSPAGES.value,
     "healthchecks": Endpoint.HEALTHCHECKS.value,
+    "alerts": Endpoint.ALERTS.value,
+    "on-call-schedules": Endpoint.ON_CALL_SCHEDULES.value,
+    "escalation-policies": Endpoint.ESCALATION_POLICIES.value,
+    "team-members": Endpoint.TEAM_MEMBERS.value,
+    "integrations": Endpoint.INTEGRATIONS.value,
+    "status-summary": Endpoint.STATUS_SUMMARY.value,
 }
 """Deprecated: Use Endpoint enum instead for type safety."""
 

@@ -19,6 +19,7 @@ from hyperping._utils import (
 from hyperping.endpoints import Endpoint
 from hyperping.exceptions import HyperpingNotFoundError
 from hyperping.models import Outage, OutageAction
+from hyperping.models._outage_models import OutageTimeline, OutageTimelineEvent
 
 logger = logging.getLogger(__name__)
 
@@ -56,9 +57,7 @@ class AsyncOutagesMixin(_AsyncClientProtocol):
             ValueError: If *status* or *outage_type* is not a recognised value.
         """
         if status not in _VALID_STATUSES:
-            raise ValueError(
-                f"Invalid status {status!r}. Valid values: {sorted(_VALID_STATUSES)}"
-            )
+            raise ValueError(f"Invalid status {status!r}. Valid values: {sorted(_VALID_STATUSES)}")
         if outage_type not in _VALID_TYPES:
             raise ValueError(
                 f"Invalid outage_type {outage_type!r}. Valid values: {sorted(_VALID_TYPES)}"
@@ -75,7 +74,8 @@ class AsyncOutagesMixin(_AsyncClientProtocol):
                 params["page"] = page
                 data = await self._request("GET", Endpoint.OUTAGES, params=params)
                 raw: list[Any] = (
-                    data.get("outages", []) if isinstance(data, dict)
+                    data.get("outages", [])
+                    if isinstance(data, dict)
                     else (data if isinstance(data, list) else [])
                 )
                 return parse_list(raw, Outage, "outage")
@@ -86,9 +86,7 @@ class AsyncOutagesMixin(_AsyncClientProtocol):
             logger.debug("Outage endpoint not available (404)")
             return []
 
-    async def acknowledge_outage(
-        self, outage_id: str, message: str | None = None
-    ) -> OutageAction:
+    async def acknowledge_outage(self, outage_id: str, message: str | None = None) -> OutageAction:
         """Acknowledge an outage.
 
         Args:
@@ -110,9 +108,7 @@ class AsyncOutagesMixin(_AsyncClientProtocol):
         )
         return OutageAction.from_raw(expect_dict(result, "outage operation"))
 
-    async def resolve_outage(
-        self, outage_id: str, message: str | None = None
-    ) -> OutageAction:
+    async def resolve_outage(self, outage_id: str, message: str | None = None) -> OutageAction:
         """Resolve an outage.
 
         Args:
@@ -163,9 +159,7 @@ class AsyncOutagesMixin(_AsyncClientProtocol):
             HyperpingNotFoundError: If outage not found.
         """
         validate_id(outage_id, "outage_id")
-        result = await self._request(
-            "POST", f"{Endpoint.OUTAGES}/{outage_id}/unacknowledge"
-        )
+        result = await self._request("POST", f"{Endpoint.OUTAGES}/{outage_id}/unacknowledge")
         return OutageAction.from_raw(expect_dict(result, "outage operation"))
 
     async def delete_outage(self, outage_id: str) -> None:
@@ -212,3 +206,33 @@ class AsyncOutagesMixin(_AsyncClientProtocol):
         validate_id(outage_id, "outage_id")
         result = await self._request("GET", f"{Endpoint.OUTAGES}/{outage_id}")
         return Outage.model_validate(expect_dict(result, "get_outage"))
+
+    async def get_outage_timeline(self, outage_id: str) -> OutageTimeline:
+        """Get the lifecycle timeline for an outage."""
+        validate_id(outage_id, "outage_id")
+        result = await self._request("GET", f"{Endpoint.OUTAGES}/{outage_id}/timeline")
+        data = expect_dict(result, "get_outage_timeline")
+        raw_events = data.get("events", [])
+        events = parse_list(raw_events, OutageTimelineEvent, "timeline_event")
+        return OutageTimeline.model_validate({"outageUuid": outage_id, "events": events})
+
+    async def get_monitor_outages(
+        self,
+        monitor_uuid: str,
+        page: int | None = None,
+        status: str = "all",
+    ) -> list[Outage]:
+        """Get outages scoped to a single monitor."""
+        validate_id(monitor_uuid, "monitor_uuid")
+        params: dict[str, Any] = {
+            "monitor_uuid": monitor_uuid,
+            "status": status,
+        }
+        if page is not None:
+            params["page"] = page
+        try:
+            result = await self._request("GET", Endpoint.OUTAGES, params=params)
+        except HyperpingNotFoundError:
+            return []
+        items = result if isinstance(result, list) else []
+        return parse_list(items, Outage, "outage")
