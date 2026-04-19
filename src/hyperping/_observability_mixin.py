@@ -5,6 +5,7 @@ from typing import Any
 from hyperping._protocols import _ClientProtocol
 from hyperping._utils import parse_list, validate_id
 from hyperping.endpoints import Endpoint
+from hyperping.exceptions import HyperpingAPIError, HyperpingNotFoundError
 from hyperping.models._observability_models import (
     AlertNotification,
     MonitorAnomaly,
@@ -29,7 +30,7 @@ class ObservabilityMixin(_ClientProtocol):
         try:
             # Path is speculative; derived from MCP tool name.
             result = self._request("GET", f"{Endpoint.MONITORS}/{monitor_uuid}/anomalies")
-        except Exception:
+        except (HyperpingNotFoundError, HyperpingAPIError):
             return []
         items = result if isinstance(result, list) else []
         return parse_list(items, MonitorAnomaly, "anomaly")
@@ -64,7 +65,7 @@ class ObservabilityMixin(_ClientProtocol):
                 f"{Endpoint.MONITORS}/{monitor_uuid}/http-logs",
                 params=params,
             )
-        except Exception:
+        except (HyperpingNotFoundError, HyperpingAPIError):
             return []
         items = result if isinstance(result, list) else []
         return parse_list(items, ProbeLog, "probe_log")
@@ -95,7 +96,7 @@ class ObservabilityMixin(_ClientProtocol):
             params["monitor_uuids"] = ",".join(monitor_uuids)
         try:
             result = self._request("GET", Endpoint.ALERTS, params=params)
-        except Exception:
+        except (HyperpingNotFoundError, HyperpingAPIError):
             return []
         items = result if isinstance(result, list) else []
         return parse_list(items, AlertNotification, "alert")

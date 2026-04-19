@@ -23,7 +23,7 @@ class AsyncReportingMixin(_AsyncClientProtocol):
         validate_id(monitor_uuid, "monitor_uuid")
         result = await self._request(
             "GET",
-            f"/v2/reporting/response-time/{monitor_uuid}",
+            f"{Endpoint.MONITOR_RESPONSE_TIME}/{monitor_uuid}",
             params={"period": period},
         )
         return expect_dict(result, "get_monitor_response_time")
@@ -33,7 +33,7 @@ class AsyncReportingMixin(_AsyncClientProtocol):
         validate_id(monitor_uuid, "monitor_uuid")
         result = await self._request(
             "GET",
-            f"/v2/reporting/mtta/{monitor_uuid}",
+            f"{Endpoint.MONITOR_MTTA}/{monitor_uuid}",
             params={"period": period},
         )
         return expect_dict(result, "get_monitor_mtta")

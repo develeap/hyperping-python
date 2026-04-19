@@ -38,10 +38,9 @@ class ReportingMixin(_ClientProtocol):
             HyperpingNotFoundError: If monitor not found.
         """
         validate_id(monitor_uuid, "monitor_uuid")
-        # Path is speculative; derived from MCP tool name.
         result = self._request(
             "GET",
-            f"/v2/reporting/response-time/{monitor_uuid}",
+            f"{Endpoint.MONITOR_RESPONSE_TIME}/{monitor_uuid}",
             params={"period": period},
         )
         return expect_dict(result, "get_monitor_response_time")
@@ -64,10 +63,9 @@ class ReportingMixin(_ClientProtocol):
             HyperpingNotFoundError: If monitor not found.
         """
         validate_id(monitor_uuid, "monitor_uuid")
-        # Path is speculative; derived from MCP tool name.
         result = self._request(
             "GET",
-            f"/v2/reporting/mtta/{monitor_uuid}",
+            f"{Endpoint.MONITOR_MTTA}/{monitor_uuid}",
             params={"period": period},
         )
         return expect_dict(result, "get_monitor_mtta")

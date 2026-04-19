@@ -54,7 +54,7 @@ class TestGetMonitorResponseTime:
     def test_success(self, client: HyperpingClient) -> None:
         """Test successful response time retrieval."""
         mock_response = {"p50": 45.0, "p95": 120.0}
-        respx.get(f"{API_BASE}/v2/reporting/response-time/uuid_1").mock(
+        respx.get(f"{API_BASE}{Endpoint.MONITOR_RESPONSE_TIME}/uuid_1").mock(
             return_value=httpx.Response(200, json=mock_response)
         )
 
@@ -67,7 +67,7 @@ class TestGetMonitorResponseTime:
     @respx.mock
     def test_default_period_is_24h(self, client: HyperpingClient) -> None:
         """Test that the default period query param is 24h."""
-        respx.get(f"{API_BASE}/v2/reporting/response-time/uuid_1").mock(
+        respx.get(f"{API_BASE}{Endpoint.MONITOR_RESPONSE_TIME}/uuid_1").mock(
             return_value=httpx.Response(200, json={"p50": 45.0})
         )
 
@@ -79,7 +79,7 @@ class TestGetMonitorResponseTime:
     @respx.mock
     def test_custom_period(self, client: HyperpingClient) -> None:
         """Test that a custom period is forwarded as a query param."""
-        respx.get(f"{API_BASE}/v2/reporting/response-time/uuid_1").mock(
+        respx.get(f"{API_BASE}{Endpoint.MONITOR_RESPONSE_TIME}/uuid_1").mock(
             return_value=httpx.Response(200, json={"p50": 45.0})
         )
 
@@ -101,7 +101,7 @@ class TestGetMonitorMtta:
     def test_success(self, client: HyperpingClient) -> None:
         """Test successful MTTA retrieval."""
         mock_response = {"mtta_seconds": 120.0}
-        respx.get(f"{API_BASE}/v2/reporting/mtta/uuid_1").mock(
+        respx.get(f"{API_BASE}{Endpoint.MONITOR_MTTA}/uuid_1").mock(
             return_value=httpx.Response(200, json=mock_response)
         )
 
@@ -113,7 +113,7 @@ class TestGetMonitorMtta:
     @respx.mock
     def test_default_period_is_30d(self, client: HyperpingClient) -> None:
         """Test that the default period query param is 30d."""
-        respx.get(f"{API_BASE}/v2/reporting/mtta/uuid_1").mock(
+        respx.get(f"{API_BASE}{Endpoint.MONITOR_MTTA}/uuid_1").mock(
             return_value=httpx.Response(200, json={"mtta_seconds": 120.0})
         )
 
@@ -125,7 +125,7 @@ class TestGetMonitorMtta:
     @respx.mock
     def test_custom_period(self, client: HyperpingClient) -> None:
         """Test that a custom period is forwarded as a query param."""
-        respx.get(f"{API_BASE}/v2/reporting/mtta/uuid_1").mock(
+        respx.get(f"{API_BASE}{Endpoint.MONITOR_MTTA}/uuid_1").mock(
             return_value=httpx.Response(200, json={"mtta_seconds": 60.0})
         )
 

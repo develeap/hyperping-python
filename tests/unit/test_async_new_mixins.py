@@ -47,7 +47,7 @@ class TestAsyncReporting:
     @respx.mock
     @pytest.mark.asyncio
     async def test_get_monitor_response_time(self, async_client):
-        respx.get(f"{API_BASE}/v2/reporting/response-time/mon_1").mock(
+        respx.get(f"{API_BASE}{Endpoint.MONITOR_RESPONSE_TIME}/mon_1").mock(
             return_value=httpx.Response(200, json={"p50": 45.0, "p95": 120.0})
         )
         result = await async_client.get_monitor_response_time("mon_1")
@@ -56,7 +56,7 @@ class TestAsyncReporting:
     @respx.mock
     @pytest.mark.asyncio
     async def test_get_monitor_mtta(self, async_client):
-        respx.get(f"{API_BASE}/v2/reporting/mtta/mon_1").mock(
+        respx.get(f"{API_BASE}{Endpoint.MONITOR_MTTA}/mon_1").mock(
             return_value=httpx.Response(200, json={"mtta_seconds": 120.0})
         )
         result = await async_client.get_monitor_mtta("mon_1")
@@ -146,9 +146,7 @@ class TestAsyncOnCall:
     @pytest.mark.asyncio
     async def test_list_escalation_policies(self, async_client):
         respx.get(f"{API_BASE}{Endpoint.ESCALATION_POLICIES}").mock(
-            return_value=httpx.Response(
-                200, json=[{"uuid": "p1", "name": "Default", "steps": []}]
-            )
+            return_value=httpx.Response(200, json=[{"uuid": "p1", "name": "Default", "steps": []}])
         )
         result = await async_client.list_escalation_policies()
         assert len(result) == 1
@@ -168,9 +166,7 @@ class TestAsyncOnCall:
     @pytest.mark.asyncio
     async def test_list_team_members(self, async_client):
         respx.get(f"{API_BASE}{Endpoint.TEAM_MEMBERS}").mock(
-            return_value=httpx.Response(
-                200, json=[{"name": "Alice", "email": "alice@example.com"}]
-            )
+            return_value=httpx.Response(200, json=[{"name": "Alice", "email": "alice@example.com"}])
         )
         result = await async_client.list_team_members()
         assert len(result) == 1
@@ -237,9 +233,7 @@ class TestAsyncOutageExtensions:
     @pytest.mark.asyncio
     async def test_get_monitor_outages(self, async_client):
         respx.get(f"{API_BASE}{Endpoint.OUTAGES}").mock(
-            return_value=httpx.Response(
-                200, json=[{"uuid": "out_1", "monitorUuid": "mon_1"}]
-            )
+            return_value=httpx.Response(200, json=[{"uuid": "out_1", "monitorUuid": "mon_1"}])
         )
         result = await async_client.get_monitor_outages("mon_1")
         assert len(result) == 1

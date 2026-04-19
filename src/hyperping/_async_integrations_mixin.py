@@ -3,6 +3,7 @@
 from hyperping._protocols import _AsyncClientProtocol
 from hyperping._utils import expect_dict, parse_list, validate_id
 from hyperping.endpoints import Endpoint
+from hyperping.exceptions import HyperpingAPIError, HyperpingNotFoundError
 from hyperping.models._integration_models import Integration
 
 
@@ -13,7 +14,7 @@ class AsyncIntegrationsMixin(_AsyncClientProtocol):
         """Get all configured notification integrations."""
         try:
             result = await self._request("GET", Endpoint.INTEGRATIONS)
-        except Exception:
+        except (HyperpingNotFoundError, HyperpingAPIError):
             return []
         items = result if isinstance(result, list) else []
         return parse_list(items, Integration, "integration")

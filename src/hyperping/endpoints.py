@@ -156,6 +156,12 @@ class Endpoint(StrEnum):
     STATUS_SUMMARY = "/v2/status-summary"
     """Aggregate status counts. Version: v2"""
 
+    MONITOR_RESPONSE_TIME = "/v2/reporting/response-time"
+    """Monitor latency percentiles. Version: v2. Append /{uuid}."""
+
+    MONITOR_MTTA = "/v2/reporting/mtta"
+    """Monitor mean time to acknowledge. Version: v2. Append /{uuid}."""
+
 
 # Detailed endpoint metadata for programmatic access
 ENDPOINTS: Final[dict[Endpoint, EndpointConfig]] = {
@@ -225,6 +231,16 @@ ENDPOINTS: Final[dict[Endpoint, EndpointConfig]] = {
         resource="status-summary",
         description="Aggregate monitor status counts",
     ),
+    Endpoint.MONITOR_RESPONSE_TIME: EndpointConfig(
+        version=APIVersion.V2,
+        resource="reporting/response-time",
+        description="Monitor latency percentiles (append /{uuid})",
+    ),
+    Endpoint.MONITOR_MTTA: EndpointConfig(
+        version=APIVersion.V2,
+        resource="reporting/mtta",
+        description="Monitor mean time to acknowledge (append /{uuid})",
+    ),
 }
 
 
@@ -252,6 +268,8 @@ API_PATHS: Final[dict[str, str]] = {
     "team-members": Endpoint.TEAM_MEMBERS.value,
     "integrations": Endpoint.INTEGRATIONS.value,
     "status-summary": Endpoint.STATUS_SUMMARY.value,
+    "monitor-response-time": Endpoint.MONITOR_RESPONSE_TIME.value,
+    "monitor-mtta": Endpoint.MONITOR_MTTA.value,
 }
 """Deprecated: Use Endpoint enum instead for type safety."""
 

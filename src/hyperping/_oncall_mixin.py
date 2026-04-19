@@ -5,6 +5,7 @@ from typing import Any
 from hyperping._protocols import _ClientProtocol
 from hyperping._utils import expect_dict, parse_list, validate_id
 from hyperping.endpoints import Endpoint
+from hyperping.exceptions import HyperpingAPIError, HyperpingNotFoundError
 from hyperping.models._oncall_models import EscalationPolicy, OnCallSchedule
 
 
@@ -20,7 +21,7 @@ class OnCallMixin(_ClientProtocol):
         """
         try:
             result = self._request("GET", Endpoint.ON_CALL_SCHEDULES)
-        except Exception:
+        except (HyperpingNotFoundError, HyperpingAPIError):
             return []
         items = result if isinstance(result, list) else []
         return parse_list(items, OnCallSchedule, "on_call_schedule")
@@ -50,7 +51,7 @@ class OnCallMixin(_ClientProtocol):
         """
         try:
             result = self._request("GET", Endpoint.ESCALATION_POLICIES)
-        except Exception:
+        except (HyperpingNotFoundError, HyperpingAPIError):
             return []
         items = result if isinstance(result, list) else []
         return parse_list(items, EscalationPolicy, "escalation_policy")
@@ -80,7 +81,7 @@ class OnCallMixin(_ClientProtocol):
         """
         try:
             result = self._request("GET", Endpoint.TEAM_MEMBERS)
-        except Exception:
+        except (HyperpingNotFoundError, HyperpingAPIError):
             return []
         if isinstance(result, list):
             return result
