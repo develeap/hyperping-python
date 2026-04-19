@@ -48,7 +48,9 @@ class IncidentsMixin(_ClientProtocol):
             params["status"] = status
 
         response = self._request(
-            "GET", Endpoint.INCIDENTS, params=params or None  # M20
+            "GET",
+            Endpoint.INCIDENTS,
+            params=params or None,  # M20
         )
         return parse_list(unwrap_list(response, "incidents"), Incident, "incident")
 

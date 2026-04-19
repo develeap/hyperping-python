@@ -15,6 +15,7 @@ Quick start::
 """
 
 from hyperping._async_client import AsyncHyperpingClient
+from hyperping._mcp_transport import MCP_URL
 from hyperping._version import __version__
 from hyperping.client import (
     CircuitBreaker,
@@ -35,6 +36,7 @@ from hyperping.exceptions import (
     HyperpingRateLimitError,
     HyperpingValidationError,
 )
+from hyperping.mcp_client import HyperpingMcpClient
 from hyperping.models import (
     DEFAULT_REGIONS,
     AddIncidentUpdateRequest,
@@ -91,6 +93,9 @@ __all__ = [
     # Clients
     "AsyncHyperpingClient",
     "HyperpingClient",
+    "HyperpingMcpClient",
+    # MCP
+    "MCP_URL",
     # Configuration
     "RetryConfig",
     "CircuitBreakerConfig",

@@ -41,9 +41,7 @@ class AsyncMaintenanceMixin(_AsyncClientProtocol):
         if status:
             params["status"] = status
 
-        response = await self._request(
-            "GET", Endpoint.MAINTENANCE, params=params or None
-        )
+        response = await self._request("GET", Endpoint.MAINTENANCE, params=params or None)
 
         raw = unwrap_list(response, "maintenanceWindows")
         if not raw and isinstance(response, dict) and "maintenance" in response:
@@ -64,9 +62,7 @@ class AsyncMaintenanceMixin(_AsyncClientProtocol):
             HyperpingNotFoundError: If maintenance not found
         """
         validate_id(maintenance_id, "maintenance_id")
-        response = await self._request(
-            "GET", f"{Endpoint.MAINTENANCE}/{maintenance_id}"
-        )
+        response = await self._request("GET", f"{Endpoint.MAINTENANCE}/{maintenance_id}")
         return Maintenance.model_validate(expect_dict(response, "get_maintenance"))
 
     async def create_maintenance(self, maintenance: MaintenanceCreate) -> Maintenance:
@@ -127,9 +123,7 @@ class AsyncMaintenanceMixin(_AsyncClientProtocol):
         payload.update(partial)
 
         response = expect_dict(
-            await self._request(
-                "PUT", f"{Endpoint.MAINTENANCE}/{maintenance_id}", json=payload
-            ),
+            await self._request("PUT", f"{Endpoint.MAINTENANCE}/{maintenance_id}", json=payload),
             "update_maintenance",
         )
         return Maintenance.model_validate(response)

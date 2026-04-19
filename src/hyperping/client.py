@@ -25,14 +25,10 @@ from hyperping._circuit_breaker import (
 )
 from hyperping._healthchecks_mixin import HealthchecksMixin
 from hyperping._incidents_mixin import IncidentsMixin
-from hyperping._integrations_mixin import IntegrationsMixin
 from hyperping._internals import DEFAULT_USER_AGENT, RETRY_AFTER_MAX, sanitize_for_log
 from hyperping._maintenance_mixin import MaintenanceMixin
 from hyperping._monitors_mixin import MonitorsMixin
-from hyperping._observability_mixin import ObservabilityMixin
-from hyperping._oncall_mixin import OnCallMixin
 from hyperping._outages_mixin import OutagesMixin
-from hyperping._reporting_mixin import ReportingMixin
 from hyperping._statuspages_mixin import StatusPagesMixin
 from hyperping.endpoints import API_BASE
 from hyperping.exceptions import (
@@ -69,10 +65,6 @@ class HyperpingClient(
     OutagesMixin,
     StatusPagesMixin,
     HealthchecksMixin,
-    ReportingMixin,
-    ObservabilityMixin,
-    OnCallMixin,
-    IntegrationsMixin,
 ):
     """Client for interacting with Hyperping API.
 

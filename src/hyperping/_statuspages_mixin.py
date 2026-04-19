@@ -64,8 +64,12 @@ class StatusPagesMixin(_ClientProtocol):
 
         try:
             return collect_all_pages(
-                self._request, Endpoint.STATUSPAGES, "statuspages",
-                params or None, StatusPage, "status page",
+                self._request,
+                Endpoint.STATUSPAGES,
+                "statuspages",
+                params or None,
+                StatusPage,
+                "status page",
             )
         except HyperpingNotFoundError:
             logger.debug("Status pages endpoint not available (404)")
@@ -182,8 +186,12 @@ class StatusPagesMixin(_ClientProtocol):
             )
 
         return collect_all_pages(
-            self._request, endpoint, "subscribers",
-            params or None, StatusPageSubscriber, "subscriber",
+            self._request,
+            endpoint,
+            "subscribers",
+            params or None,
+            StatusPageSubscriber,
+            "subscriber",
         )
 
     def add_subscriber(self, status_page_id: str, email: str) -> StatusPageSubscriber:

@@ -199,9 +199,7 @@ class TestSubscribersPagination:
                 },
             ),
         ]
-        respx.get(f"{API_BASE}{Endpoint.STATUSPAGES}/{sp_id}/subscribers").mock(
-            side_effect=calls
-        )
+        respx.get(f"{API_BASE}{Endpoint.STATUSPAGES}/{sp_id}/subscribers").mock(side_effect=calls)
         subs = client.list_subscribers(sp_id)
         assert len(subs) == 2
         assert respx.calls.call_count == 2

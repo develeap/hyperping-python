@@ -21,13 +21,9 @@ from pydantic import SecretStr
 
 from hyperping._async_healthchecks_mixin import AsyncHealthchecksMixin
 from hyperping._async_incidents_mixin import AsyncIncidentsMixin
-from hyperping._async_integrations_mixin import AsyncIntegrationsMixin
 from hyperping._async_maintenance_mixin import AsyncMaintenanceMixin
 from hyperping._async_monitors_mixin import AsyncMonitorsMixin
-from hyperping._async_observability_mixin import AsyncObservabilityMixin
-from hyperping._async_oncall_mixin import AsyncOnCallMixin
 from hyperping._async_outages_mixin import AsyncOutagesMixin
-from hyperping._async_reporting_mixin import AsyncReportingMixin
 from hyperping._async_statuspages_mixin import AsyncStatusPagesMixin
 from hyperping._circuit_breaker import (
     CircuitBreaker,
@@ -52,10 +48,6 @@ class AsyncHyperpingClient(
     AsyncOutagesMixin,
     AsyncStatusPagesMixin,
     AsyncHealthchecksMixin,
-    AsyncReportingMixin,
-    AsyncObservabilityMixin,
-    AsyncOnCallMixin,
-    AsyncIntegrationsMixin,
 ):
     """Async client for interacting with the Hyperping API.
 

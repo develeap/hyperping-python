@@ -43,7 +43,9 @@ class MaintenanceMixin(_ClientProtocol):
             params["status"] = status
 
         response = self._request(
-            "GET", Endpoint.MAINTENANCE, params=params or None  # M20
+            "GET",
+            Endpoint.MAINTENANCE,
+            params=params or None,  # M20
         )
 
         # API returns {"maintenanceWindows": [...]} as of current version

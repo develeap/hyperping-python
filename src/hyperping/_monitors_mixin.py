@@ -213,23 +213,3 @@ class MonitorsMixin(_ClientProtocol):
             if r.uuid == monitor_id:
                 return r
         raise HyperpingNotFoundError(f"No report found for monitor: {monitor_id}")
-
-    def search_monitors_by_name(self, query: str) -> list[Monitor]:
-        """Search monitors by name (case-insensitive substring match).
-
-        Args:
-            query: Search string to match against monitor names and URLs.
-
-        Returns:
-            List of matching :class:`~hyperping.models.Monitor` objects.
-            Returns empty list on 404 or no matches.
-        """
-        if not query:
-            return []
-        try:
-            # Path is speculative; derived from MCP tool name.
-            result = self._request("GET", f"{Endpoint.MONITORS}/search", params={"query": query})
-        except HyperpingNotFoundError:
-            return []
-        items = result if isinstance(result, list) else []
-        return parse_list(items, Monitor, "monitor")

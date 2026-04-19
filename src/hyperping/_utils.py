@@ -38,9 +38,7 @@ def expect_dict(response: Any, context: str = "API response") -> dict[str, Any]:
         TypeError: If *response* is not a dict.
     """
     if not isinstance(response, dict):
-        raise TypeError(
-            f"Expected dict from {context}, got {type(response).__name__}"
-        )
+        raise TypeError(f"Expected dict from {context}, got {type(response).__name__}")
     return response
 
 
@@ -63,8 +61,7 @@ def validate_id(value: str, name: str = "id") -> str:
     """
     if not value or not _RESOURCE_ID_RE.match(value):
         raise ValueError(
-            f"Invalid {name} {value!r}: must contain only letters, digits, "
-            "hyphens, and underscores"
+            f"Invalid {name} {value!r}: must contain only letters, digits, hyphens, and underscores"
         )
     return value
 
