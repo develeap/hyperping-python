@@ -99,9 +99,7 @@ class AsyncMonitorsMixin(_AsyncClientProtocol):
         )
         payload.update(update.model_dump(exclude_none=True))
 
-        response = await self._request(
-            "PUT", f"{Endpoint.MONITORS}/{monitor_id}", json=payload
-        )
+        response = await self._request("PUT", f"{Endpoint.MONITORS}/{monitor_id}", json=payload)
         return Monitor.model_validate(expect_dict(response, "update_monitor"))
 
     async def delete_monitor(self, monitor_id: str) -> None:
@@ -156,9 +154,7 @@ class AsyncMonitorsMixin(_AsyncClientProtocol):
             HyperpingAPIError: On unexpected API errors.
         """
         if period not in VALID_PERIODS:
-            raise ValueError(
-                f"Invalid period {period!r}. Valid values: {sorted(VALID_PERIODS)}"
-            )
+            raise ValueError(f"Invalid period {period!r}. Valid values: {sorted(VALID_PERIODS)}")
         response = expect_dict(
             await self._request("GET", Endpoint.REPORTS, params={"period": period}),
             "get_all_reports",
@@ -191,3 +187,16 @@ class AsyncMonitorsMixin(_AsyncClientProtocol):
             if r.uuid == monitor_id:
                 return r
         raise HyperpingNotFoundError(f"No report found for monitor: {monitor_id}")
+
+    async def search_monitors_by_name(self, query: str) -> list[Monitor]:
+        """Search monitors by name (case-insensitive substring match)."""
+        if not query:
+            return []
+        try:
+            result = await self._request(
+                "GET", f"{Endpoint.MONITORS}/search", params={"query": query}
+            )
+        except HyperpingNotFoundError:
+            return []
+        items = result if isinstance(result, list) else []
+        return parse_list(items, Monitor, "monitor")

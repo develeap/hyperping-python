@@ -23,6 +23,7 @@ from hyperping.models._incident_models import (
     IncidentUpdateRequest,
     IncidentUpdateType,
 )
+from hyperping.models._integration_models import Integration
 from hyperping.models._maintenance_models import (
     Maintenance,
     MaintenanceCreate,
@@ -50,7 +51,19 @@ from hyperping.models._monitor_models import (
     ReportPeriod,
     RequestHeader,
 )
-from hyperping.models._outage_models import Outage, OutageAction
+from hyperping.models._observability_models import (
+    AlertNotification,
+    MonitorAnomaly,
+    ProbeLog,
+)
+from hyperping.models._oncall_models import EscalationPolicy, OnCallSchedule
+from hyperping.models._outage_models import (
+    Outage,
+    OutageAction,
+    OutageTimeline,
+    OutageTimelineEvent,
+)
+from hyperping.models._reporting_models import StatusSummary
 from hyperping.models._statuspage_models import (
     StatusPage,
     StatusPageCreate,
@@ -102,6 +115,19 @@ __all__ = [
     # Outage models
     "Outage",
     "OutageAction",
+    "OutageTimeline",
+    "OutageTimelineEvent",
+    # Observability models
+    "MonitorAnomaly",
+    "ProbeLog",
+    "AlertNotification",
+    # On-call models
+    "OnCallSchedule",
+    "EscalationPolicy",
+    # Integration models
+    "Integration",
+    # Reporting models
+    "StatusSummary",
     # Healthcheck models
     "Healthcheck",
     "HealthcheckCreate",

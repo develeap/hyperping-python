@@ -682,3 +682,46 @@ class TestRetryJitter:
             slept = mock_sleep.call_args[0][0]
             assert slept == 45.0
             c.close()
+
+
+class TestSearchMonitorsByName:
+    """Tests for search_monitors_by_name method."""
+
+    @respx.mock
+    def test_success(self, client: HyperpingClient) -> None:
+        """Test searching monitors by name returns matching monitors."""
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}/search").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "monitorUuid": "mon_1",
+                        "name": "API Monitor",
+                        "url": "https://api.example.com",
+                        "down": False,
+                        "paused": False,
+                    }
+                ],
+            )
+        )
+
+        result = client.search_monitors_by_name("API")
+
+        assert len(result) == 1
+        assert result[0].uuid == "mon_1"
+        assert result[0].name == "API Monitor"
+
+    def test_empty_query_returns_empty_list(self, client: HyperpingClient) -> None:
+        """Test that an empty query returns an empty list without making an API call."""
+        result = client.search_monitors_by_name("")
+        assert result == []
+
+    @respx.mock
+    def test_not_found_returns_empty_list(self, client: HyperpingClient) -> None:
+        """Test that 404 returns an empty list."""
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}/search").mock(
+            return_value=httpx.Response(404, json={"error": "Not found"})
+        )
+
+        result = client.search_monitors_by_name("nonexistent")
+        assert result == []

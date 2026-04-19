@@ -38,7 +38,9 @@ from hyperping.exceptions import (
 from hyperping.models import (
     DEFAULT_REGIONS,
     AddIncidentUpdateRequest,
+    AlertNotification,
     DnsRecordType,
+    EscalationPolicy,
     Healthcheck,
     HealthcheckCreate,
     HealthcheckUpdate,
@@ -49,11 +51,13 @@ from hyperping.models import (
     IncidentUpdate,
     IncidentUpdateRequest,
     IncidentUpdateType,
+    Integration,
     LocalizedText,
     Maintenance,
     MaintenanceCreate,
     MaintenanceUpdate,
     Monitor,
+    MonitorAnomaly,
     MonitorBase,
     MonitorCreate,
     MonitorFrequency,
@@ -63,10 +67,14 @@ from hyperping.models import (
     MonitorTimeout,
     MonitorUpdate,
     NotificationOption,
+    OnCallSchedule,
     Outage,
     OutageAction,
     OutageDetail,
     OutageStats,
+    OutageTimeline,
+    OutageTimelineEvent,
+    ProbeLog,
     Region,
     ReportPeriod,
     RequestHeader,
@@ -74,6 +82,7 @@ from hyperping.models import (
     StatusPageCreate,
     StatusPageSubscriber,
     StatusPageUpdate,
+    StatusSummary,
 )
 
 __all__ = [
@@ -137,6 +146,19 @@ __all__ = [
     # Outages
     "Outage",
     "OutageAction",
+    "OutageTimeline",
+    "OutageTimelineEvent",
+    # Observability
+    "MonitorAnomaly",
+    "ProbeLog",
+    "AlertNotification",
+    # On-call
+    "OnCallSchedule",
+    "EscalationPolicy",
+    # Integrations
+    "Integration",
+    # Reporting
+    "StatusSummary",
     # Healthchecks
     "Healthcheck",
     "HealthcheckCreate",
@@ -161,8 +183,7 @@ def __getattr__(name: str) -> object:
 
     if name == "HYPERPING_API_BASE":
         warnings.warn(
-            "HYPERPING_API_BASE is deprecated and will be removed in v0.3.0. "
-            "Use API_BASE instead.",
+            "HYPERPING_API_BASE is deprecated and will be removed in v0.3.0. Use API_BASE instead.",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -170,8 +191,7 @@ def __getattr__(name: str) -> object:
 
     if name == "API_PATHS":
         warnings.warn(
-            "API_PATHS is deprecated and will be removed in v0.3.0. "
-            "Use the Endpoint enum instead.",
+            "API_PATHS is deprecated and will be removed in v0.3.0. Use the Endpoint enum instead.",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -199,7 +219,10 @@ def __getattr__(name: str) -> object:
 
     # Symbols removed from __all__ (H5) but still accessible for backward compat
     _endpoint_helpers = {
-        "EndpointConfig", "ENDPOINTS", "get_endpoint_url", "get_version_for_endpoint",
+        "EndpointConfig",
+        "ENDPOINTS",
+        "get_endpoint_url",
+        "get_version_for_endpoint",
     }
     if name in _endpoint_helpers:
         from hyperping import endpoints as _ep

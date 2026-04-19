@@ -78,3 +78,28 @@ class Outage(BaseModel):
     def from_raw(cls, data: dict[str, Any]) -> Outage:
         """Parse an outage from a raw API response dict."""
         return cls.model_validate(data)
+
+
+class OutageTimelineEvent(BaseModel):
+    """Single event in an outage lifecycle timeline.
+
+    Events include detection, cross-region verification, alert dispatch,
+    acknowledgement, and resolution.
+    """
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True, frozen=True)
+
+    event_type: str = Field(..., alias="eventType", description="Event category")
+    timestamp: str = Field(..., description="Event time ISO 8601")
+    detail: str | None = Field(default=None, description="Event detail text")
+
+
+class OutageTimeline(BaseModel):
+    """Full lifecycle timeline for an outage."""
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True, frozen=True)
+
+    outage_uuid: str = Field(..., alias="outageUuid", description="Outage UUID")
+    events: list[OutageTimelineEvent] = Field(
+        default_factory=list, description="Chronological list of events"
+    )

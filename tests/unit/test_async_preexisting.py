@@ -1,0 +1,331 @@
+"""Tests for pre-existing async mixins: healthchecks, maintenance, incidents.
+
+These bring coverage of existing async code that was previously untested.
+"""
+
+import httpx
+import pytest
+import pytest_asyncio
+import respx
+
+from hyperping._async_client import AsyncHyperpingClient
+from hyperping.client import RetryConfig
+from hyperping.endpoints import API_BASE, Endpoint
+from hyperping.exceptions import HyperpingNotFoundError
+
+
+@pytest_asyncio.fixture
+async def async_client():
+    """Async client with retries disabled."""
+    client = AsyncHyperpingClient(
+        api_key="sk_test_key",
+        base_url=API_BASE,
+        retry_config=RetryConfig(max_retries=0),
+    )
+    yield client
+    await client.close()
+
+
+# ==================== Async Healthchecks ====================
+
+
+class TestAsyncHealthchecks:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_list_healthchecks(self, async_client):
+        respx.get(f"{API_BASE}{Endpoint.HEALTHCHECKS}").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "uuid": "hc_1",
+                        "name": "Cron Job",
+                        "period": 300,
+                        "grace": 60,
+                    }
+                ],
+            )
+        )
+        result = await async_client.list_healthchecks()
+        assert len(result) == 1
+        assert result[0].uuid == "hc_1"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_get_healthcheck(self, async_client):
+        respx.get(f"{API_BASE}{Endpoint.HEALTHCHECKS}/hc_1").mock(
+            return_value=httpx.Response(
+                200,
+                json={"uuid": "hc_1", "name": "Cron", "period": 300, "grace": 60},
+            )
+        )
+        result = await async_client.get_healthcheck("hc_1")
+        assert result.name == "Cron"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_create_healthcheck(self, async_client):
+        from hyperping.models import HealthcheckCreate
+
+        respx.post(f"{API_BASE}{Endpoint.HEALTHCHECKS}").mock(
+            return_value=httpx.Response(
+                201,
+                json={"uuid": "hc_new", "name": "New HC", "period": 600, "grace": 120},
+            )
+        )
+        hc = HealthcheckCreate(name="New HC", period=600, grace=120)
+        result = await async_client.create_healthcheck(hc)
+        assert result.uuid == "hc_new"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_delete_healthcheck(self, async_client):
+        respx.delete(f"{API_BASE}{Endpoint.HEALTHCHECKS}/hc_1").mock(
+            return_value=httpx.Response(204)
+        )
+        await async_client.delete_healthcheck("hc_1")
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_pause_healthcheck(self, async_client):
+        respx.post(f"{API_BASE}{Endpoint.HEALTHCHECKS}/hc_1/pause").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "uuid": "hc_1",
+                    "name": "HC",
+                    "period": 300,
+                    "grace": 60,
+                    "isPaused": True,
+                },
+            )
+        )
+        result = await async_client.pause_healthcheck("hc_1")
+        assert result.uuid == "hc_1"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_resume_healthcheck(self, async_client):
+        respx.post(f"{API_BASE}{Endpoint.HEALTHCHECKS}/hc_1/resume").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "uuid": "hc_1",
+                    "name": "HC",
+                    "period": 300,
+                    "grace": 60,
+                    "isPaused": False,
+                },
+            )
+        )
+        result = await async_client.resume_healthcheck("hc_1")
+        assert result.uuid == "hc_1"
+
+
+# ==================== Async Maintenance ====================
+
+
+class TestAsyncMaintenance:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_list_maintenance(self, async_client):
+        respx.get(f"{API_BASE}{Endpoint.MAINTENANCE}").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "maintenanceWindows": [
+                        {
+                            "uuid": "mw_1",
+                            "name": "Upgrade",
+                            "start_date": "2026-01-01T00:00:00Z",
+                            "end_date": "2026-01-01T02:00:00Z",
+                            "monitors": [],
+                        }
+                    ]
+                },
+            )
+        )
+        result = await async_client.list_maintenance()
+        assert len(result) == 1
+        assert result[0].uuid == "mw_1"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_get_maintenance(self, async_client):
+        respx.get(f"{API_BASE}{Endpoint.MAINTENANCE}/mw_1").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "uuid": "mw_1",
+                    "name": "Upgrade",
+                    "start_date": "2026-01-01T00:00:00Z",
+                    "end_date": "2026-01-01T02:00:00Z",
+                    "monitors": [],
+                },
+            )
+        )
+        result = await async_client.get_maintenance("mw_1")
+        assert result.name == "Upgrade"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_create_maintenance(self, async_client):
+        from hyperping.models import MaintenanceCreate
+
+        respx.post(f"{API_BASE}{Endpoint.MAINTENANCE}").mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    "uuid": "mw_new",
+                    "name": "Deploy",
+                    "start_date": "2026-02-01T00:00:00Z",
+                    "end_date": "2026-02-01T02:00:00Z",
+                    "monitors": ["mon_1"],
+                },
+            )
+        )
+        mw = MaintenanceCreate(
+            name="Deploy",
+            start_date="2026-02-01T00:00:00Z",
+            end_date="2026-02-01T02:00:00Z",
+            monitors=["mon_1"],
+        )
+        result = await async_client.create_maintenance(mw)
+        assert result.uuid == "mw_new"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_delete_maintenance(self, async_client):
+        respx.delete(f"{API_BASE}{Endpoint.MAINTENANCE}/mw_1").mock(
+            return_value=httpx.Response(204)
+        )
+        await async_client.delete_maintenance("mw_1")
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_update_maintenance(self, async_client):
+        from hyperping.models import MaintenanceUpdate
+
+        respx.get(f"{API_BASE}{Endpoint.MAINTENANCE}/mw_1").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "uuid": "mw_1",
+                    "name": "Old Name",
+                    "start_date": "2026-01-01T00:00:00Z",
+                    "end_date": "2026-01-01T02:00:00Z",
+                    "monitors": ["mon_1"],
+                },
+            )
+        )
+        respx.put(f"{API_BASE}{Endpoint.MAINTENANCE}/mw_1").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "uuid": "mw_1",
+                    "name": "New Name",
+                    "start_date": "2026-01-01T00:00:00Z",
+                    "end_date": "2026-01-01T02:00:00Z",
+                    "monitors": ["mon_1"],
+                },
+            )
+        )
+        result = await async_client.update_maintenance(
+            "mw_1", MaintenanceUpdate(name="New Name")
+        )
+        assert result.name == "New Name"
+
+
+# ==================== Async Incidents ====================
+
+
+class TestAsyncIncidents:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_list_incidents(self, async_client):
+        respx.get(f"{API_BASE}{Endpoint.INCIDENTS}").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "uuid": "inc_1",
+                        "title": {"en": "Outage"},
+                        "type": "outage",
+                        "affected_components": [],
+                        "statuspages": ["sp_1"],
+                        "updates": [],
+                    }
+                ],
+            )
+        )
+        result = await async_client.list_incidents()
+        assert len(result) == 1
+        assert result[0].uuid == "inc_1"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_get_incident(self, async_client):
+        respx.get(f"{API_BASE}{Endpoint.INCIDENTS}/inc_1").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "uuid": "inc_1",
+                    "title": {"en": "Outage"},
+                    "type": "outage",
+                    "affected_components": [],
+                    "statuspages": ["sp_1"],
+                    "updates": [],
+                },
+            )
+        )
+        result = await async_client.get_incident("inc_1")
+        assert result.title_en == "Outage"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_resolve_incident(self, async_client):
+        # resolve_incident calls add_incident_update which POSTs then GETs
+        respx.post(f"{API_BASE}{Endpoint.INCIDENTS}/inc_1/updates").mock(
+            return_value=httpx.Response(
+                200, json={"uuid": "u1", "message": "Update added"}
+            )
+        )
+        respx.get(f"{API_BASE}{Endpoint.INCIDENTS}/inc_1").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "uuid": "inc_1",
+                    "title": {"en": "Outage"},
+                    "type": "outage",
+                    "affected_components": [],
+                    "statuspages": ["sp_1"],
+                    "updates": [
+                        {
+                            "uuid": "u1",
+                            "type": "resolved",
+                            "date": "2026-01-01T01:00:00Z",
+                            "text": {"en": "Fixed"},
+                        }
+                    ],
+                },
+            )
+        )
+        result = await async_client.resolve_incident("inc_1", message="Fixed")
+        assert result.uuid == "inc_1"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_delete_incident(self, async_client):
+        respx.delete(f"{API_BASE}{Endpoint.INCIDENTS}/inc_1").mock(
+            return_value=httpx.Response(204)
+        )
+        await async_client.delete_incident("inc_1")
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_incident_not_found(self, async_client):
+        respx.get(f"{API_BASE}{Endpoint.INCIDENTS}/inc_x").mock(
+            return_value=httpx.Response(404, json={"error": "Not found"})
+        )
+        with pytest.raises(HyperpingNotFoundError):
+            await async_client.get_incident("inc_x")
