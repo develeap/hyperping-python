@@ -45,9 +45,7 @@ class AsyncIncidentsMixin(_AsyncClientProtocol):
         if status:
             params["status"] = status
 
-        response = await self._request(
-            "GET", Endpoint.INCIDENTS, params=params or None
-        )
+        response = await self._request("GET", Endpoint.INCIDENTS, params=params or None)
         return parse_list(unwrap_list(response, "incidents"), Incident, "incident")
 
     async def get_incident(self, incident_id: str) -> Incident:
@@ -114,9 +112,7 @@ class AsyncIncidentsMixin(_AsyncClientProtocol):
         validate_id(incident_id, "incident_id")
         payload = update.model_dump(exclude_none=True, by_alias=True)
         response = expect_dict(
-            await self._request(
-                "PUT", f"{Endpoint.INCIDENTS}/{incident_id}", json=payload
-            ),
+            await self._request("PUT", f"{Endpoint.INCIDENTS}/{incident_id}", json=payload),
             "update_incident",
         )
         return Incident.model_validate(response)
@@ -145,9 +141,7 @@ class AsyncIncidentsMixin(_AsyncClientProtocol):
         await self._request("POST", url, json=payload)
         return await self.get_incident(incident_id)
 
-    async def resolve_incident(
-        self, incident_id: str, message: str | None = None
-    ) -> Incident:
+    async def resolve_incident(self, incident_id: str, message: str | None = None) -> Incident:
         """Resolve an incident.
 
         Args:

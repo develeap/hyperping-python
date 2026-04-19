@@ -272,9 +272,7 @@ class MonitorBase(BaseModel):
         if "headers" in remapped and "request_headers" not in remapped:
             headers = remapped.pop("headers")
             if isinstance(headers, dict):
-                remapped["request_headers"] = [
-                    {"name": k, "value": v} for k, v in headers.items()
-                ]
+                remapped["request_headers"] = [{"name": k, "value": v} for k, v in headers.items()]
             else:
                 remapped["request_headers"] = headers
         if "expected_status" in remapped and "expected_status_code" not in remapped:
@@ -307,9 +305,7 @@ class MonitorCreate(MonitorBase):
         set_dns_fields = [k for k, v in dns_fields.items() if v is not None]
         protocol = self.protocol
         if set_dns_fields and str(protocol) != MonitorProtocol.DNS.value:
-            raise ValueError(
-                f"DNS fields {set_dns_fields} are only valid when protocol='dns'"
-            )
+            raise ValueError(f"DNS fields {set_dns_fields} are only valid when protocol='dns'")
         return self
 
 
@@ -370,8 +366,7 @@ class Monitor(MonitorBase):
         # Handle API returning headers as dict sometimes
         if "request_headers" in remapped and isinstance(remapped["request_headers"], dict):
             remapped["request_headers"] = [
-                {"name": k, "value": v}
-                for k, v in remapped["request_headers"].items()
+                {"name": k, "value": v} for k, v in remapped["request_headers"].items()
             ]
 
         # Handle API returning null for optional fields

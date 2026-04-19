@@ -53,9 +53,7 @@ class TestHyperpingClientMonitors:
     @respx.mock
     def test_list_monitors_empty(self, client: HyperpingClient) -> None:
         """Test list monitors with empty result."""
-        respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(
-            return_value=httpx.Response(200, json=[])
-        )
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(return_value=httpx.Response(200, json=[]))
 
         monitors = client.list_monitors()
         assert monitors == []
@@ -183,9 +181,7 @@ class TestHyperpingClientMonitors:
     @respx.mock
     def test_ping_success(self, client: HyperpingClient) -> None:
         """Test ping connectivity check."""
-        respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(
-            return_value=httpx.Response(200, json=[])
-        )
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(return_value=httpx.Response(200, json=[]))
 
         assert client.ping() is True
 
@@ -452,9 +448,7 @@ class TestContextManager:
     @respx.mock
     def test_context_manager(self) -> None:
         """Test client works as context manager."""
-        respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(
-            return_value=httpx.Response(200, json=[])
-        )
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(return_value=httpx.Response(200, json=[]))
 
         with HyperpingClient(api_key="sk_test") as c:
             monitors = c.list_monitors()
@@ -474,9 +468,7 @@ class TestSecretStrApiKey:
     @respx.mock
     def test_api_key_used_in_auth_header(self) -> None:
         """Authorization header contains the actual key."""
-        respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(
-            return_value=httpx.Response(200, json=[])
-        )
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(return_value=httpx.Response(200, json=[]))
         c = HyperpingClient(api_key="sk_test_auth")
         c.list_monitors()
         assert c._client.headers["Authorization"] == "Bearer sk_test_auth"
@@ -639,9 +631,7 @@ class TestRetryJitter:
             sleep_values.append(duration)
 
         with patch("hyperping.client.time.sleep", side_effect=capture_sleep):
-            with patch(
-                "hyperping.client.random.uniform", wraps=__import__("random").uniform
-            ):
+            with patch("hyperping.client.random.uniform", wraps=__import__("random").uniform):
                 c = HyperpingClient(
                     api_key="sk_test",
                     retry_config=RetryConfig(max_retries=2, initial_delay=1.0, backoff_factor=2.0),
@@ -682,46 +672,3 @@ class TestRetryJitter:
             slept = mock_sleep.call_args[0][0]
             assert slept == 45.0
             c.close()
-
-
-class TestSearchMonitorsByName:
-    """Tests for search_monitors_by_name method."""
-
-    @respx.mock
-    def test_success(self, client: HyperpingClient) -> None:
-        """Test searching monitors by name returns matching monitors."""
-        respx.get(f"{API_BASE}{Endpoint.MONITORS}/search").mock(
-            return_value=httpx.Response(
-                200,
-                json=[
-                    {
-                        "monitorUuid": "mon_1",
-                        "name": "API Monitor",
-                        "url": "https://api.example.com",
-                        "down": False,
-                        "paused": False,
-                    }
-                ],
-            )
-        )
-
-        result = client.search_monitors_by_name("API")
-
-        assert len(result) == 1
-        assert result[0].uuid == "mon_1"
-        assert result[0].name == "API Monitor"
-
-    def test_empty_query_returns_empty_list(self, client: HyperpingClient) -> None:
-        """Test that an empty query returns an empty list without making an API call."""
-        result = client.search_monitors_by_name("")
-        assert result == []
-
-    @respx.mock
-    def test_not_found_returns_empty_list(self, client: HyperpingClient) -> None:
-        """Test that 404 returns an empty list."""
-        respx.get(f"{API_BASE}{Endpoint.MONITORS}/search").mock(
-            return_value=httpx.Response(404, json={"error": "Not found"})
-        )
-
-        result = client.search_monitors_by_name("nonexistent")
-        assert result == []

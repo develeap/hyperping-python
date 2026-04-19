@@ -70,22 +70,16 @@ class TestListHealthchecks:
     @respx.mock
     def test_returns_empty_list_on_404(self, client: HyperpingClient) -> None:
         """Returns empty list instead of raising on 404 (consistent with list_outages)."""
-        respx.get(_HC_ENDPOINT).mock(
-            return_value=httpx.Response(404, json={"error": "Not found"})
-        )
+        respx.get(_HC_ENDPOINT).mock(return_value=httpx.Response(404, json={"error": "Not found"}))
 
         result = client.list_healthchecks()
 
         assert result == []
 
     @respx.mock
-    def test_returns_empty_list_when_response_is_empty_list(
-        self, client: HyperpingClient
-    ) -> None:
+    def test_returns_empty_list_when_response_is_empty_list(self, client: HyperpingClient) -> None:
         """Returns empty list when API returns an empty array."""
-        respx.get(_HC_ENDPOINT).mock(
-            return_value=httpx.Response(200, json=[])
-        )
+        respx.get(_HC_ENDPOINT).mock(return_value=httpx.Response(200, json=[]))
 
         result = client.list_healthchecks()
 
@@ -132,9 +126,7 @@ class TestCreateHealthcheck:
     @respx.mock
     def test_returns_created_healthcheck(self, client: HyperpingClient) -> None:
         """Returns the created Healthcheck from the API response."""
-        respx.post(_HC_ENDPOINT).mock(
-            return_value=httpx.Response(201, json=_make_hc())
-        )
+        respx.post(_HC_ENDPOINT).mock(return_value=httpx.Response(201, json=_make_hc()))
 
         payload = HealthcheckCreate(name="Daily job", period=86400, grace=3600)
         result = client.create_healthcheck(payload)
@@ -146,15 +138,14 @@ class TestCreateHealthcheck:
     @respx.mock
     def test_excludes_none_fields_from_payload(self, client: HyperpingClient) -> None:
         """Payload sent to the API omits None optional fields."""
-        route = respx.post(_HC_ENDPOINT).mock(
-            return_value=httpx.Response(201, json=_make_hc())
-        )
+        route = respx.post(_HC_ENDPOINT).mock(return_value=httpx.Response(201, json=_make_hc()))
 
         payload = HealthcheckCreate(name="Hourly job", period=3600, grace=300)
         client.create_healthcheck(payload)
 
         sent_body = route.calls[0].request
         import json as json_module
+
         body = json_module.loads(sent_body.content)
         assert "escalation_policy" not in body
         assert "project_uuid" not in body
@@ -167,9 +158,7 @@ class TestUpdateHealthcheck:
     def test_returns_updated_healthcheck(self, client: HyperpingClient) -> None:
         """Returns the updated Healthcheck from the API response."""
         updated = _make_hc(name="Updated job", period=3600)
-        respx.put(f"{_HC_ENDPOINT}/hc_abc123").mock(
-            return_value=httpx.Response(200, json=updated)
-        )
+        respx.put(f"{_HC_ENDPOINT}/hc_abc123").mock(return_value=httpx.Response(200, json=updated))
 
         update = HealthcheckUpdate(name="Updated job", period=3600)
         result = client.update_healthcheck("hc_abc123", update)
@@ -200,9 +189,7 @@ class TestDeleteHealthcheck:
     @respx.mock
     def test_returns_none_on_success(self, client: HyperpingClient) -> None:
         """Returns None after a successful delete."""
-        respx.delete(f"{_HC_ENDPOINT}/hc_abc123").mock(
-            return_value=httpx.Response(204)
-        )
+        respx.delete(f"{_HC_ENDPOINT}/hc_abc123").mock(return_value=httpx.Response(204))
 
         result = client.delete_healthcheck("hc_abc123")
 

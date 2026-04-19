@@ -327,9 +327,7 @@ class TestStatusPagesAPIClient:
     @respx.mock
     def test_list_subscribers_wrapped_response(self, client: HyperpingClient) -> None:
         """Test listing when API returns wrapped response."""
-        mock_response = {
-            "subscribers": [{"id": "sub_1", "email": "carol@example.com"}]
-        }
+        mock_response = {"subscribers": [{"id": "sub_1", "email": "carol@example.com"}]}
         respx.get(f"{API_BASE}{Endpoint.STATUSPAGES}/sp_1/subscribers").mock(
             return_value=httpx.Response(200, json=mock_response)
         )
@@ -339,9 +337,9 @@ class TestStatusPagesAPIClient:
     @respx.mock
     def test_list_subscribers_status_page_not_found(self, client: HyperpingClient) -> None:
         """Test listing subscribers when status page doesn't exist."""
-        respx.get(
-            f"{API_BASE}{Endpoint.STATUSPAGES}/sp_nope/subscribers"
-        ).mock(return_value=httpx.Response(404, json={"error": "Not found"}))
+        respx.get(f"{API_BASE}{Endpoint.STATUSPAGES}/sp_nope/subscribers").mock(
+            return_value=httpx.Response(404, json={"error": "Not found"})
+        )
         with pytest.raises(HyperpingNotFoundError):
             client.list_subscribers("sp_nope")
 
@@ -359,9 +357,7 @@ class TestStatusPagesAPIClient:
         assert sub.id == "sub_new"
         assert sub.email == "dave@example.com"
 
-    def test_add_subscriber_invalid_email_raises_value_error(
-        self, client: HyperpingClient
-    ) -> None:
+    def test_add_subscriber_invalid_email_raises_value_error(self, client: HyperpingClient) -> None:
         """Test adding a subscriber with an invalid email raises ValueError (M10)."""
         with pytest.raises(ValueError, match="Invalid email"):
             client.add_subscriber("sp_1", "not-an-email")
@@ -371,17 +367,17 @@ class TestStatusPagesAPIClient:
     @respx.mock
     def test_remove_subscriber(self, client: HyperpingClient) -> None:
         """Test removing a subscriber from a status page."""
-        respx.delete(
-            f"{API_BASE}{Endpoint.STATUSPAGES}/sp_1/subscribers/sub_1"
-        ).mock(return_value=httpx.Response(204))
+        respx.delete(f"{API_BASE}{Endpoint.STATUSPAGES}/sp_1/subscribers/sub_1").mock(
+            return_value=httpx.Response(204)
+        )
 
         client.remove_subscriber("sp_1", "sub_1")  # Should not raise
 
     @respx.mock
     def test_remove_subscriber_not_found(self, client: HyperpingClient) -> None:
         """Test removing a non-existent subscriber."""
-        respx.delete(
-            f"{API_BASE}{Endpoint.STATUSPAGES}/sp_1/subscribers/sub_nope"
-        ).mock(return_value=httpx.Response(404, json={"error": "Not found"}))
+        respx.delete(f"{API_BASE}{Endpoint.STATUSPAGES}/sp_1/subscribers/sub_nope").mock(
+            return_value=httpx.Response(404, json={"error": "Not found"})
+        )
         with pytest.raises(HyperpingNotFoundError):
             client.remove_subscriber("sp_1", "sub_nope")

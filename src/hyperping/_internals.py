@@ -28,7 +28,4 @@ def sanitize_for_log(data: dict[str, Any] | None) -> dict[str, Any] | None:
     """
     if data is None:
         return None
-    return {
-        k: "[REDACTED]" if k.lower() in _SENSITIVE_LOG_KEYS else v
-        for k, v in data.items()
-    }
+    return {k: "[REDACTED]" if k.lower() in _SENSITIVE_LOG_KEYS else v for k, v in data.items()}

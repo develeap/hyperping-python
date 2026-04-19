@@ -69,8 +69,12 @@ class AsyncStatusPagesMixin(_AsyncClientProtocol):
 
         try:
             return await collect_all_pages_async(
-                self._request, Endpoint.STATUSPAGES, "statuspages",
-                params or None, StatusPage, "status page",
+                self._request,
+                Endpoint.STATUSPAGES,
+                "statuspages",
+                params or None,
+                StatusPage,
+                "status page",
             )
         except HyperpingNotFoundError:
             logger.debug("Status pages endpoint not available (404)")
@@ -131,9 +135,7 @@ class AsyncStatusPagesMixin(_AsyncClientProtocol):
         validate_id(status_page_id, "status_page_id")
         payload = update.model_dump(exclude_none=True, by_alias=True)
         response = expect_dict(
-            await self._request(
-                "PUT", f"{Endpoint.STATUSPAGES}/{status_page_id}", json=payload
-            ),
+            await self._request("PUT", f"{Endpoint.STATUSPAGES}/{status_page_id}", json=payload),
             "update_status_page",
         )
         return StatusPage.model_validate(response)
@@ -189,13 +191,15 @@ class AsyncStatusPagesMixin(_AsyncClientProtocol):
             )
 
         return await collect_all_pages_async(
-            self._request, endpoint, "subscribers",
-            params or None, StatusPageSubscriber, "subscriber",
+            self._request,
+            endpoint,
+            "subscribers",
+            params or None,
+            StatusPageSubscriber,
+            "subscriber",
         )
 
-    async def add_subscriber(
-        self, status_page_id: str, email: str
-    ) -> StatusPageSubscriber:
+    async def add_subscriber(self, status_page_id: str, email: str) -> StatusPageSubscriber:
         """Add a subscriber to a status page.
 
         Args:
@@ -225,9 +229,7 @@ class AsyncStatusPagesMixin(_AsyncClientProtocol):
         )
         return StatusPageSubscriber.model_validate(response)
 
-    async def remove_subscriber(
-        self, status_page_id: str, subscriber_id: str
-    ) -> None:
+    async def remove_subscriber(self, status_page_id: str, subscriber_id: str) -> None:
         """Remove a subscriber from a status page.
 
         Args:

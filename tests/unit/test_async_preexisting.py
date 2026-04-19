@@ -230,9 +230,7 @@ class TestAsyncMaintenance:
                 },
             )
         )
-        result = await async_client.update_maintenance(
-            "mw_1", MaintenanceUpdate(name="New Name")
-        )
+        result = await async_client.update_maintenance("mw_1", MaintenanceUpdate(name="New Name"))
         assert result.name == "New Name"
 
 
@@ -286,9 +284,7 @@ class TestAsyncIncidents:
     async def test_resolve_incident(self, async_client):
         # resolve_incident calls add_incident_update which POSTs then GETs
         respx.post(f"{API_BASE}{Endpoint.INCIDENTS}/inc_1/updates").mock(
-            return_value=httpx.Response(
-                200, json={"uuid": "u1", "message": "Update added"}
-            )
+            return_value=httpx.Response(200, json={"uuid": "u1", "message": "Update added"})
         )
         respx.get(f"{API_BASE}{Endpoint.INCIDENTS}/inc_1").mock(
             return_value=httpx.Response(
@@ -316,9 +312,7 @@ class TestAsyncIncidents:
     @respx.mock
     @pytest.mark.asyncio
     async def test_delete_incident(self, async_client):
-        respx.delete(f"{API_BASE}{Endpoint.INCIDENTS}/inc_1").mock(
-            return_value=httpx.Response(204)
-        )
+        respx.delete(f"{API_BASE}{Endpoint.INCIDENTS}/inc_1").mock(return_value=httpx.Response(204))
         await async_client.delete_incident("inc_1")
 
     @respx.mock

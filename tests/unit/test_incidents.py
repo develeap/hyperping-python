@@ -249,9 +249,7 @@ class TestIncidentAPIClient:
     @respx.mock
     def test_list_incidents_with_status_filter(self, client: HyperpingClient) -> None:
         """Test listing incidents with status filter."""
-        respx.get(f"{API_BASE}{Endpoint.INCIDENTS}").mock(
-            return_value=httpx.Response(200, json=[])
-        )
+        respx.get(f"{API_BASE}{Endpoint.INCIDENTS}").mock(return_value=httpx.Response(200, json=[]))
         incidents = client.list_incidents(status="investigating")
         assert incidents == []
 

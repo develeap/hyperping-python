@@ -201,9 +201,7 @@ class TestAsyncPing:
             api_key="sk_test",
             retry_config=RetryConfig(max_retries=0),
         ) as client:
-            client._client.request = AsyncMock(
-                side_effect=httpx.ConnectError("connection refused")
-            )
+            client._client.request = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
             with pytest.raises(HyperpingAPIError, match="API connectivity test failed"):
                 await client.ping()
 
@@ -443,9 +441,7 @@ class TestAsyncMonitorsMixin:
         async with AsyncHyperpingClient(
             api_key="sk_test", retry_config=RetryConfig(max_retries=0)
         ) as client:
-            client._client.request = AsyncMock(
-                return_value=_mock_err(404, {"error": "Not found"})
-            )
+            client._client.request = AsyncMock(return_value=_mock_err(404, {"error": "Not found"}))
             with pytest.raises(HyperpingNotFoundError):
                 await client.get_monitor("mon_missing")
 
@@ -514,9 +510,7 @@ class TestAsyncOutagesMixin:
     @pytest.mark.asyncio
     async def test_list_outages_success(self) -> None:
         """list_outages returns Outage objects from dict response."""
-        payload = {
-            "outages": [{"uuid": "out_1", "monitor_uuid": "mon_1", "status": "active"}]
-        }
+        payload = {"outages": [{"uuid": "out_1", "monitor_uuid": "mon_1", "status": "active"}]}
         async with AsyncHyperpingClient(
             api_key="sk_test", retry_config=RetryConfig(max_retries=0)
         ) as client:
@@ -542,9 +536,7 @@ class TestAsyncOutagesMixin:
         async with AsyncHyperpingClient(
             api_key="sk_test", retry_config=RetryConfig(max_retries=0)
         ) as client:
-            client._client.request = AsyncMock(
-                return_value=_mock_err(404, {"error": "Not found"})
-            )
+            client._client.request = AsyncMock(return_value=_mock_err(404, {"error": "Not found"}))
             outages = await client.list_outages()
         assert outages == []
 
@@ -554,9 +546,7 @@ class TestAsyncOutagesMixin:
         async with AsyncHyperpingClient(
             api_key="sk_test", retry_config=RetryConfig(max_retries=0)
         ) as client:
-            client._client.request = AsyncMock(
-                return_value=_mock_ok({"status": "acknowledged"})
-            )
+            client._client.request = AsyncMock(return_value=_mock_ok({"status": "acknowledged"}))
             result = await client.acknowledge_outage("out_1")
         assert isinstance(result, OutageAction)
         assert result.status == "acknowledged"
@@ -567,9 +557,7 @@ class TestAsyncOutagesMixin:
         async with AsyncHyperpingClient(
             api_key="sk_test", retry_config=RetryConfig(max_retries=0)
         ) as client:
-            client._client.request = AsyncMock(
-                return_value=_mock_ok({"status": "resolved"})
-            )
+            client._client.request = AsyncMock(return_value=_mock_ok({"status": "resolved"}))
             result = await client.resolve_outage("out_1")
         assert result.status == "resolved"
 
@@ -579,9 +567,7 @@ class TestAsyncOutagesMixin:
         async with AsyncHyperpingClient(
             api_key="sk_test", retry_config=RetryConfig(max_retries=0)
         ) as client:
-            client._client.request = AsyncMock(
-                return_value=_mock_ok({"status": "escalated"})
-            )
+            client._client.request = AsyncMock(return_value=_mock_ok({"status": "escalated"}))
             result = await client.escalate_outage("out_1")
         assert result.status == "escalated"
 
@@ -610,9 +596,7 @@ class TestAsyncErrorMapping:
         async with AsyncHyperpingClient(
             api_key="sk_test", retry_config=RetryConfig(max_retries=0)
         ) as client:
-            client._client.request = AsyncMock(
-                return_value=_mock_err(404, {"error": "Not found"})
-            )
+            client._client.request = AsyncMock(return_value=_mock_err(404, {"error": "Not found"}))
             with pytest.raises(HyperpingNotFoundError):
                 await client.get_monitor("mon_nope")
 
@@ -659,9 +643,7 @@ class TestAsyncErrorMapping:
         async with AsyncHyperpingClient(
             api_key="sk_test", retry_config=RetryConfig(max_retries=0)
         ) as client:
-            client._client.request = AsyncMock(
-                side_effect=httpx.TimeoutException("timed out")
-            )
+            client._client.request = AsyncMock(side_effect=httpx.TimeoutException("timed out"))
             with pytest.raises(HyperpingAPIError, match="timeout"):
                 await client.list_monitors()
 
@@ -671,9 +653,7 @@ class TestAsyncErrorMapping:
         async with AsyncHyperpingClient(
             api_key="sk_test", retry_config=RetryConfig(max_retries=0)
         ) as client:
-            client._client.request = AsyncMock(
-                side_effect=httpx.ConnectError("connection refused")
-            )
+            client._client.request = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
             with pytest.raises(HyperpingAPIError, match="Request failed"):
                 await client.list_monitors()
 
@@ -739,9 +719,7 @@ class TestAsyncOutagesPagination:
     @pytest.mark.asyncio
     async def test_list_outages_explicit_page(self) -> None:
         """list_outages with explicit page returns single-page results."""
-        payload = {
-            "outages": [{"uuid": "out_p1", "monitor_uuid": "mon_1", "status": "active"}]
-        }
+        payload = {"outages": [{"uuid": "out_p1", "monitor_uuid": "mon_1", "status": "active"}]}
         async with AsyncHyperpingClient(
             api_key="sk_test", retry_config=RetryConfig(max_retries=0)
         ) as client:
@@ -778,9 +756,7 @@ class TestAsyncOutagesPagination:
         async with AsyncHyperpingClient(
             api_key="sk_test", retry_config=RetryConfig(max_retries=0)
         ) as client:
-            client._client.request = AsyncMock(
-                side_effect=[_mock_ok(page1), _mock_ok(page2)]
-            )
+            client._client.request = AsyncMock(side_effect=[_mock_ok(page1), _mock_ok(page2)])
             outages = await client.list_outages()
         assert len(outages) == 2
 
@@ -841,9 +817,7 @@ class TestAsyncStatusPagesMixin:
         async with AsyncHyperpingClient(
             api_key="sk_test", retry_config=RetryConfig(max_retries=0)
         ) as client:
-            client._client.request = AsyncMock(
-                return_value=_mock_err(404, {"error": "Not found"})
-            )
+            client._client.request = AsyncMock(return_value=_mock_err(404, {"error": "Not found"}))
             pages = await client.list_status_pages()
         assert pages == []
 
@@ -923,9 +897,7 @@ class TestAsyncStatusPagesMixin:
     @pytest.mark.asyncio
     async def test_list_subscribers_explicit_page(self) -> None:
         """list_subscribers with explicit page returns single-page results."""
-        payload = {
-            "subscribers": [{"id": "sub_2", "email": "a@b.com", "type": "email"}]
-        }
+        payload = {"subscribers": [{"id": "sub_2", "email": "a@b.com", "type": "email"}]}
         async with AsyncHyperpingClient(
             api_key="sk_test", retry_config=RetryConfig(max_retries=0)
         ) as client:

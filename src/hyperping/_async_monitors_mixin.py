@@ -187,16 +187,3 @@ class AsyncMonitorsMixin(_AsyncClientProtocol):
             if r.uuid == monitor_id:
                 return r
         raise HyperpingNotFoundError(f"No report found for monitor: {monitor_id}")
-
-    async def search_monitors_by_name(self, query: str) -> list[Monitor]:
-        """Search monitors by name (case-insensitive substring match)."""
-        if not query:
-            return []
-        try:
-            result = await self._request(
-                "GET", f"{Endpoint.MONITORS}/search", params={"query": query}
-            )
-        except HyperpingNotFoundError:
-            return []
-        items = result if isinstance(result, list) else []
-        return parse_list(items, Monitor, "monitor")
