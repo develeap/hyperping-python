@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-04-20
+
+### Fixed
+
+- HTTP 403 from MCP server now correctly raises `HyperpingAuthError` (was
+  `HyperpingAPIError`). The Hyperping MCP server returns 403 for invalid API keys;
+  the transport only handled 401. Now matches REST client behavior.
+- `MCP_URL` defined in single location (`endpoints.py`); removed duplicate in
+  `_mcp_transport.py`.
+- MCP handshake version string uses `__version__` instead of hardcoded `"1.4.0"`.
+
 ## [1.4.0] - 2026-04-19
 
 ### Added
