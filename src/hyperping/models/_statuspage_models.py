@@ -11,7 +11,7 @@ class StatusPage(BaseModel):
     API: GET /v2/statuspages, GET /v2/statuspages/{uuid}
     """
 
-    model_config = ConfigDict(extra="ignore", populate_by_name=True, frozen=True)
+    model_config = ConfigDict(extra="allow", populate_by_name=True, frozen=True)
 
     uuid: str = Field(..., description="Status page UUID")
     name: str = Field(..., description="Status page display name")
@@ -65,7 +65,7 @@ class StatusPageSubscriber(BaseModel):
     API: GET /v2/statuspages/{uuid}/subscribers
     """
 
-    model_config = ConfigDict(extra="ignore", populate_by_name=True, frozen=True)
+    model_config = ConfigDict(extra="allow", populate_by_name=True, frozen=True)
 
     id: str = Field(..., description="Subscriber ID")
     email: str = Field(..., description="Subscriber email address")

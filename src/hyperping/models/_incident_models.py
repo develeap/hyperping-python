@@ -29,7 +29,7 @@ class IncidentUpdateType(StrEnum):
 class IncidentUpdate(BaseModel):
     """Model for an incident update from v3 API."""
 
-    model_config = ConfigDict(extra="ignore", populate_by_name=True, frozen=True)
+    model_config = ConfigDict(extra="allow", populate_by_name=True, frozen=True)
 
     uuid: str = Field(..., description="Update UUID")
     date: str = Field(..., description="Update timestamp ISO 8601")
@@ -99,7 +99,7 @@ class Incident(BaseModel):
     API: GET /v3/incidents, GET /v3/incidents/{uuid}
     """
 
-    model_config = ConfigDict(extra="ignore", populate_by_name=True, frozen=True)
+    model_config = ConfigDict(extra="allow", populate_by_name=True, frozen=True)
 
     uuid: str = Field(..., description="Incident UUID (inci_xxx)")
     date: str | None = Field(default=None, description="Incident date ISO 8601")

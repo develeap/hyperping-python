@@ -15,6 +15,7 @@ Quick start::
 """
 
 from hyperping._async_client import AsyncHyperpingClient
+from hyperping._async_mcp_client import AsyncHyperpingMcpClient
 from hyperping._version import __version__
 from hyperping.client import (
     CircuitBreaker,
@@ -40,7 +41,7 @@ from hyperping.mcp_client import HyperpingMcpClient
 from hyperping.models import (
     DEFAULT_REGIONS,
     AddIncidentUpdateRequest,
-    AlertNotification,
+    AlertHistory,
     DnsRecordType,
     EscalationPolicy,
     Healthcheck,
@@ -64,10 +65,13 @@ from hyperping.models import (
     MonitorCreate,
     MonitorFrequency,
     MonitorListResponse,
+    MonitorMetricsSummary,
     MonitorProtocol,
     MonitorReport,
     MonitorTimeout,
     MonitorUpdate,
+    MttaReport,
+    MttrReport,
     NotificationOption,
     OnCallSchedule,
     Outage,
@@ -77,14 +81,18 @@ from hyperping.models import (
     OutageTimeline,
     OutageTimelineEvent,
     ProbeLog,
+    ProbeLogResponse,
     Region,
     ReportPeriod,
     RequestHeader,
+    ResponseTimeReport,
     StatusPage,
     StatusPageCreate,
     StatusPageSubscriber,
     StatusPageUpdate,
     StatusSummary,
+    TeamMember,
+    TimeGroup,
 )
 
 __all__ = [
@@ -92,6 +100,7 @@ __all__ = [
     "__version__",
     # Clients
     "AsyncHyperpingClient",
+    "AsyncHyperpingMcpClient",
     "HyperpingClient",
     "HyperpingMcpClient",
     # MCP
@@ -156,14 +165,21 @@ __all__ = [
     # Observability
     "MonitorAnomaly",
     "ProbeLog",
-    "AlertNotification",
+    "ProbeLogResponse",
     # On-call
     "OnCallSchedule",
     "EscalationPolicy",
+    "TeamMember",
     # Integrations
     "Integration",
     # Reporting
     "StatusSummary",
+    "TimeGroup",
+    "ResponseTimeReport",
+    "AlertHistory",
+    "MonitorMetricsSummary",
+    "MttrReport",
+    "MttaReport",
     # Healthchecks
     "Healthcheck",
     "HealthcheckCreate",

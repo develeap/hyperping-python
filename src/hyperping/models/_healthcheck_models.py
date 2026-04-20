@@ -56,11 +56,11 @@ class Healthcheck(HealthcheckBase):
 
     API: GET /v2/healthchecks, GET /v2/healthchecks/{uuid}
 
-    Uses ``extra="ignore"`` to tolerate additional API fields and
-    ``frozen=True`` for immutability (D-06: is_paused not paused).
+    Uses ``extra="allow"`` so new API fields are preserved instead of silently
+    dropped, and ``frozen=True`` for immutability (D-06: is_paused not paused).
     """
 
-    model_config = ConfigDict(extra="ignore", populate_by_name=True, frozen=True)
+    model_config = ConfigDict(extra="allow", populate_by_name=True, frozen=True)
 
     uuid: str = Field(..., description="Healthcheck unique identifier")
     is_paused: bool = Field(default=False, description="Whether the healthcheck is paused")

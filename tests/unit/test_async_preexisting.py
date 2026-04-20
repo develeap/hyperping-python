@@ -79,6 +79,67 @@ class TestAsyncHealthchecks:
 
     @respx.mock
     @pytest.mark.asyncio
+    async def test_list_healthchecks_from_dict_key(self, async_client):
+        """Handles API response wrapped in a 'healthchecks' key."""
+        respx.get(f"{API_BASE}{Endpoint.HEALTHCHECKS}").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "healthchecks": [
+                        {"uuid": "hc_d1", "name": "Dict HC", "period": 300, "grace": 60}
+                    ]
+                },
+            )
+        )
+        result = await async_client.list_healthchecks()
+        assert len(result) == 1
+        assert result[0].uuid == "hc_d1"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_list_healthchecks_unexpected_shape_returns_empty(self, async_client):
+        """Returns empty list when response is neither list nor dict with key."""
+        respx.get(f"{API_BASE}{Endpoint.HEALTHCHECKS}").mock(
+            return_value=httpx.Response(200, json={"other_key": "value"})
+        )
+        result = await async_client.list_healthchecks()
+        assert result == []
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_list_healthchecks_404_returns_empty(self, async_client):
+        """Returns empty list on 404 (HyperpingNotFoundError is caught)."""
+        respx.get(f"{API_BASE}{Endpoint.HEALTHCHECKS}").mock(
+            return_value=httpx.Response(404, json={"error": "Not found"})
+        )
+        result = await async_client.list_healthchecks()
+        assert result == []
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_update_healthcheck(self, async_client):
+        """update_healthcheck sends PUT and returns updated Healthcheck."""
+        from hyperping.models import HealthcheckUpdate
+
+        respx.put(f"{API_BASE}{Endpoint.HEALTHCHECKS}/hc_1").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "uuid": "hc_1",
+                    "name": "Updated HC",
+                    "period": 600,
+                    "grace": 120,
+                },
+            )
+        )
+        update = HealthcheckUpdate(name="Updated HC", period=600)
+        result = await async_client.update_healthcheck("hc_1", update)
+        assert result.uuid == "hc_1"
+        assert result.name == "Updated HC"
+        assert result.period == 600
+
+    @respx.mock
+    @pytest.mark.asyncio
     async def test_delete_healthcheck(self, async_client):
         respx.delete(f"{API_BASE}{Endpoint.HEALTHCHECKS}/hc_1").mock(
             return_value=httpx.Response(204)
@@ -278,6 +339,95 @@ class TestAsyncIncidents:
         )
         result = await async_client.get_incident("inc_1")
         assert result.title_en == "Outage"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_list_incidents_with_status_filter(self, async_client):
+        """list_incidents passes status query param when provided."""
+        respx.get(f"{API_BASE}{Endpoint.INCIDENTS}").mock(return_value=httpx.Response(200, json=[]))
+        result = await async_client.list_incidents(status="investigating")
+        assert result == []
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_create_incident(self, async_client):
+        """create_incident POSTs and re-fetches the full incident when API returns uuid."""
+        from hyperping.models import IncidentCreate, IncidentType, LocalizedText
+
+        create_response = {"message": "Incident created", "uuid": "inc_new"}
+        full_response = {
+            "uuid": "inc_new",
+            "title": {"en": "New Incident"},
+            "type": "incident",
+            "affected_components": [],
+            "statuspages": ["sp_1"],
+            "updates": [],
+        }
+        respx.post(f"{API_BASE}{Endpoint.INCIDENTS}").mock(
+            return_value=httpx.Response(201, json=create_response)
+        )
+        respx.get(f"{API_BASE}{Endpoint.INCIDENTS}/inc_new").mock(
+            return_value=httpx.Response(200, json=full_response)
+        )
+        incident = IncidentCreate(
+            title=LocalizedText(en="New Incident"),
+            text=LocalizedText(en="Body"),
+            type=IncidentType.INCIDENT,
+            statuspages=["sp_1"],
+        )
+        result = await async_client.create_incident(incident)
+        assert result.uuid == "inc_new"
+        assert result.title_en == "New Incident"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_create_incident_full_response(self, async_client):
+        """create_incident returns directly when API returns full incident object."""
+        from hyperping.models import IncidentCreate, IncidentType, LocalizedText
+
+        full_response = {
+            "uuid": "inc_full",
+            "title": {"en": "Full Incident"},
+            "type": "incident",
+            "affected_components": [],
+            "statuspages": ["sp_1"],
+            "updates": [],
+        }
+        respx.post(f"{API_BASE}{Endpoint.INCIDENTS}").mock(
+            return_value=httpx.Response(201, json=full_response)
+        )
+        incident = IncidentCreate(
+            title=LocalizedText(en="Full Incident"),
+            text=LocalizedText(en="Body"),
+            type=IncidentType.INCIDENT,
+            statuspages=["sp_1"],
+        )
+        result = await async_client.create_incident(incident)
+        assert result.uuid == "inc_full"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_update_incident(self, async_client):
+        """update_incident sends PUT and returns updated Incident."""
+        from hyperping.models import IncidentUpdateRequest, LocalizedText
+
+        updated_response = {
+            "uuid": "inc_upd",
+            "title": {"en": "Updated Title"},
+            "type": "incident",
+            "affected_components": [],
+            "statuspages": ["sp_1"],
+            "updates": [],
+        }
+        respx.put(f"{API_BASE}{Endpoint.INCIDENTS}/inc_upd").mock(
+            return_value=httpx.Response(200, json=updated_response)
+        )
+        result = await async_client.update_incident(
+            "inc_upd",
+            IncidentUpdateRequest(title=LocalizedText(en="Updated Title")),
+        )
+        assert result.uuid == "inc_upd"
+        assert result.title_en == "Updated Title"
 
     @respx.mock
     @pytest.mark.asyncio

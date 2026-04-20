@@ -84,7 +84,7 @@ class Maintenance(BaseModel):
     API: GET /v1/maintenance-windows, GET /v1/maintenance-windows/{uuid}
     """
 
-    model_config = ConfigDict(extra="ignore", populate_by_name=True, frozen=True)
+    model_config = ConfigDict(extra="allow", populate_by_name=True, frozen=True)
 
     uuid: str = Field(..., description="Maintenance UUID (mw_xxx)")
     name: str = Field(..., description="Internal name")

@@ -138,3 +138,88 @@ class TestOutageAPIClient:
         )
         with pytest.raises(HyperpingNotFoundError):
             client.escalate_outage("out_nope")
+
+    def test_list_outages_invalid_status(self, client: HyperpingClient) -> None:
+        """list_outages raises ValueError for unrecognised status."""
+        with pytest.raises(ValueError, match="Invalid status"):
+            client.list_outages(status="bad_status")
+
+    def test_list_outages_invalid_outage_type(self, client: HyperpingClient) -> None:
+        """list_outages raises ValueError for unrecognised outage_type."""
+        with pytest.raises(ValueError, match="Invalid outage_type"):
+            client.list_outages(outage_type="bad_type")
+
+    @respx.mock
+    def test_unacknowledge_outage(self, client: HyperpingClient) -> None:
+        """Test unacknowledging an outage."""
+        respx.post(f"{API_BASE}{Endpoint.OUTAGES}/out_1/unacknowledge").mock(
+            return_value=httpx.Response(200, json={"status": "unacknowledged"})
+        )
+        result = client.unacknowledge_outage("out_1")
+        assert isinstance(result, OutageAction)
+        assert result.status == "unacknowledged"
+
+    @respx.mock
+    def test_unacknowledge_outage_not_found(self, client: HyperpingClient) -> None:
+        """Test unacknowledging a non-existent outage."""
+        respx.post(f"{API_BASE}{Endpoint.OUTAGES}/out_nope/unacknowledge").mock(
+            return_value=httpx.Response(404, json={"error": "Not found"})
+        )
+        with pytest.raises(HyperpingNotFoundError):
+            client.unacknowledge_outage("out_nope")
+
+    @respx.mock
+    def test_delete_outage(self, client: HyperpingClient) -> None:
+        """Test deleting an outage."""
+        respx.delete(f"{API_BASE}{Endpoint.OUTAGES}/out_1").mock(return_value=httpx.Response(204))
+        result = client.delete_outage("out_1")
+        assert result is None
+
+    @respx.mock
+    def test_delete_outage_not_found(self, client: HyperpingClient) -> None:
+        """Test deleting a non-existent outage."""
+        respx.delete(f"{API_BASE}{Endpoint.OUTAGES}/out_nope").mock(
+            return_value=httpx.Response(404, json={"error": "Not found"})
+        )
+        with pytest.raises(HyperpingNotFoundError):
+            client.delete_outage("out_nope")
+
+    @respx.mock
+    def test_create_outage(self, client: HyperpingClient) -> None:
+        """Test creating a manual outage."""
+        from hyperping.models import Outage
+
+        respx.post(f"{API_BASE}{Endpoint.OUTAGES}").mock(
+            return_value=httpx.Response(
+                201,
+                json={"uuid": "out_new", "monitor_uuid": "mon_1", "status": "active"},
+            )
+        )
+        result = client.create_outage("mon_1")
+        assert isinstance(result, Outage)
+        assert result.uuid == "out_new"
+        assert result.monitor_uuid == "mon_1"
+
+    @respx.mock
+    def test_get_outage(self, client: HyperpingClient) -> None:
+        """Test getting a single outage by ID."""
+        from hyperping.models import Outage
+
+        respx.get(f"{API_BASE}{Endpoint.OUTAGES}/out_1").mock(
+            return_value=httpx.Response(
+                200,
+                json={"uuid": "out_1", "monitor_uuid": "mon_1", "status": "active"},
+            )
+        )
+        result = client.get_outage("out_1")
+        assert isinstance(result, Outage)
+        assert result.uuid == "out_1"
+
+    @respx.mock
+    def test_get_outage_not_found(self, client: HyperpingClient) -> None:
+        """Test getting a non-existent outage."""
+        respx.get(f"{API_BASE}{Endpoint.OUTAGES}/out_nope").mock(
+            return_value=httpx.Response(404, json={"error": "Not found"})
+        )
+        with pytest.raises(HyperpingNotFoundError):
+            client.get_outage("out_nope")

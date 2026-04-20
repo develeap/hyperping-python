@@ -1,10 +1,9 @@
-"""JSON-RPC 2.0 transport for the Hyperping MCP server."""
+"""Async JSON-RPC 2.0 transport for the Hyperping MCP server."""
 
 from __future__ import annotations
 
+import asyncio
 import json
-import threading
-import time
 from typing import Any
 
 import httpx
@@ -23,8 +22,8 @@ from hyperping.exceptions import (
 _PROTOCOL_VERSION = "2025-03-26"
 
 
-class McpTransport:
-    """Low-level JSON-RPC 2.0 client for the Hyperping MCP server.
+class AsyncMcpTransport:
+    """Async low-level JSON-RPC 2.0 client for the Hyperping MCP server.
 
     The MCP server exposes tools not available via the REST API: on-call
     schedules, anomalies, alerts, integrations, probe logs, and more.
@@ -41,7 +40,7 @@ class McpTransport:
     ) -> None:
         token = api_key.get_secret_value() if isinstance(api_key, SecretStr) else api_key
         self._url = base_url.rstrip("/")
-        self._client = httpx.Client(
+        self._client = httpx.AsyncClient(
             headers={
                 "Authorization": f"Bearer {token}",
                 "Content-Type": "application/json",
@@ -51,15 +50,15 @@ class McpTransport:
         )
         self._initialized = False
         self._request_id = 0
-        self._lock = threading.Lock()
+        self._lock = asyncio.Lock()
         self._max_retries = max_retries
 
-    def _next_id(self) -> int:
-        with self._lock:
+    async def _next_id(self) -> int:
+        async with self._lock:
             self._request_id += 1
             return self._request_id
 
-    def _send_rpc(
+    async def _send_rpc(
         self,
         method: str,
         params: dict[str, Any] | None = None,
@@ -70,9 +69,9 @@ class McpTransport:
         if params is not None:
             payload["params"] = params
         if not is_notification:
-            payload["id"] = self._next_id()
+            payload["id"] = await self._next_id()
 
-        resp = self._client.post(self._url, content=json.dumps(payload))
+        resp = await self._client.post(self._url, content=json.dumps(payload))
 
         if resp.status_code in (401, 403):
             raise HyperpingAuthError("Invalid or expired API key")
@@ -85,10 +84,10 @@ class McpTransport:
             )
         if resp.status_code == 429:
             retry_after = None
-            raw = resp.headers.get("retry-after")
-            if raw:
+            raw_retry = resp.headers.get("retry-after")
+            if raw_retry:
                 try:
-                    retry_after = int(raw)
+                    retry_after = int(raw_retry)
                 except ValueError:
                     pass
             raise HyperpingRateLimitError(
@@ -120,9 +119,9 @@ class McpTransport:
             )
         return data  # type: ignore[no-any-return]
 
-    def initialize(self) -> dict[str, Any]:
+    async def initialize(self) -> dict[str, Any]:
         """Perform MCP handshake. Called automatically on first tool call."""
-        result = self._send_rpc(
+        result = await self._send_rpc(
             "initialize",
             {
                 "protocolVersion": _PROTOCOL_VERSION,
@@ -130,12 +129,12 @@ class McpTransport:
                 "clientInfo": {"name": "hyperping-python", "version": __version__},
             },
         )
-        self._send_rpc("notifications/initialized", is_notification=True)
-        with self._lock:
+        await self._send_rpc("notifications/initialized", is_notification=True)
+        async with self._lock:
             self._initialized = True
         return result.get("result", {}) if result else {}
 
-    def call_tool(
+    async def call_tool(
         self,
         tool_name: str,
         arguments: dict[str, Any] | None = None,
@@ -148,15 +147,15 @@ class McpTransport:
         Retries automatically on transient server errors (HTTP 500, 502,
         503, 504) up to ``max_retries`` times with exponential back-off.
         """
-        with self._lock:
+        async with self._lock:
             needs_init = not self._initialized
         if needs_init:
-            self.initialize()
+            await self.initialize()
 
         last_exc: Exception | None = None
         for attempt in range(self._max_retries + 1):
             try:
-                result = self._send_rpc(
+                result = await self._send_rpc(
                     "tools/call",
                     {"name": tool_name, "arguments": arguments or {}},
                 )
@@ -165,12 +164,11 @@ class McpTransport:
                 if exc.status_code and exc.status_code in (500, 502, 503, 504):
                     last_exc = exc
                     if attempt < self._max_retries:
-                        time.sleep(min(2**attempt, 10))
+                        await asyncio.sleep(min(2**attempt, 10))
                         continue
                 raise
         else:
             raise last_exc  # type: ignore[misc]
-
         if result is None:
             return None
 
@@ -191,11 +189,11 @@ class McpTransport:
                 response_body={"raw": text[:500]},
             ) from exc
 
-    def close(self) -> None:
-        self._client.close()
+    async def close(self) -> None:
+        await self._client.aclose()
 
-    def __enter__(self) -> McpTransport:
+    async def __aenter__(self) -> AsyncMcpTransport:
         return self
 
-    def __exit__(self, *args: object) -> None:
-        self.close()
+    async def __aexit__(self, *args: object) -> None:
+        await self.close()
