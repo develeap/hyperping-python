@@ -1,8 +1,10 @@
-"""Tests for the high-level MCP client."""
+"""Tests for the async high-level MCP client."""
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock
 
-from hyperping.mcp_client import HyperpingMcpClient
+import pytest
+
+from hyperping._async_mcp_client import AsyncHyperpingMcpClient
 from hyperping.models._integration_models import Integration
 from hyperping.models._monitor_models import Monitor
 from hyperping.models._observability_models import MonitorAnomaly, ProbeLogResponse
@@ -17,13 +19,14 @@ from hyperping.models._reporting_models import (
 )
 
 
-def make_client() -> HyperpingMcpClient:
-    client = HyperpingMcpClient(api_key="sk_test")
-    client._transport = MagicMock()
+def make_client() -> AsyncHyperpingMcpClient:
+    client = AsyncHyperpingMcpClient(api_key="sk_test")
+    client._transport = AsyncMock()
     return client
 
 
-def test_get_status_summary():
+@pytest.mark.asyncio
+async def test_get_status_summary():
     client = make_client()
     client._transport.call_tool.return_value = {
         "total": 5,
@@ -32,47 +35,56 @@ def test_get_status_summary():
         "paused": 1,
         "unknown": 0,
     }
-    result = client.get_status_summary()
+    result = await client.get_status_summary()
     assert isinstance(result, StatusSummary)
     assert result.total == 5
     client._transport.call_tool.assert_called_once_with("get_status_summary", {})
 
 
-def test_list_on_call_schedules():
+@pytest.mark.asyncio
+async def test_list_on_call_schedules():
     client = make_client()
     client._transport.call_tool.return_value = {
         "schedules": [{"uuid": "s1", "name": "Primary"}],
     }
-    result = client.list_on_call_schedules()
+    result = await client.list_on_call_schedules()
     assert len(result) == 1
     assert isinstance(result[0], OnCallSchedule)
     client._transport.call_tool.assert_called_once_with("list_on_call_schedules", {})
 
 
-def test_list_team_members_bare_array():
+@pytest.mark.asyncio
+async def test_list_team_members_bare_array():
     client = make_client()
     client._transport.call_tool.return_value = [
         {"uuid": "u1", "email": "a@b.com", "name": "A"},
     ]
-    result = client.list_team_members()
+    result = await client.list_team_members()
     assert len(result) == 1
     assert isinstance(result[0], TeamMember)
     assert result[0].email == "a@b.com"
     client._transport.call_tool.assert_called_once_with("list_team_members", {})
 
 
-def test_search_monitors():
+@pytest.mark.asyncio
+async def test_search_monitors():
     client = make_client()
     client._transport.call_tool.return_value = [
-        {"uuid": "m1", "name": "API", "url": "https://api.example.com", "protocol": "http"},
+        {
+            "uuid": "m1",
+            "name": "API",
+            "url": "https://api.example.com",
+            "protocol": "http",
+        },
     ]
-    result = client.search_monitors_by_name("API")
+    result = await client.search_monitors_by_name("API")
     assert len(result) == 1
     assert isinstance(result[0], Monitor)
     client._transport.call_tool.assert_called_once_with("search_monitors_by_name", {"query": "API"})
 
 
-def test_get_outage_timeline():
+@pytest.mark.asyncio
+async def test_get_outage_timeline():
     client = make_client()
     client._transport.call_tool.return_value = {
         "outage": {"uuid": "o1"},
@@ -80,7 +92,7 @@ def test_get_outage_timeline():
         "escalationPolicy": None,
         "timeline": [{"type": "detected", "timestamp": "2026-01-01T00:00:00Z"}],
     }
-    result = client.get_outage_timeline("outage_123")
+    result = await client.get_outage_timeline("outage_123")
     assert isinstance(result, OutageTimeline)
     assert len(result.timeline) == 1
     client._transport.call_tool.assert_called_once_with(
@@ -88,7 +100,8 @@ def test_get_outage_timeline():
     )
 
 
-def test_get_monitor_anomalies():
+@pytest.mark.asyncio
+async def test_get_monitor_anomalies():
     client = make_client()
     client._transport.call_tool.return_value = {
         "anomalies": [
@@ -102,7 +115,7 @@ def test_get_monitor_anomalies():
             }
         ],
     }
-    result = client.get_monitor_anomalies("mon_123")
+    result = await client.get_monitor_anomalies("mon_123")
     assert len(result) == 1
     assert isinstance(result[0], MonitorAnomaly)
     client._transport.call_tool.assert_called_once_with(
@@ -110,17 +123,19 @@ def test_get_monitor_anomalies():
     )
 
 
-def test_context_manager():
-    with HyperpingMcpClient(api_key="sk_test") as client:
+@pytest.mark.asyncio
+async def test_context_manager():
+    async with AsyncHyperpingMcpClient(api_key="sk_test") as client:
         assert client is not None
 
 
-def test_get_monitor_response_time():
+@pytest.mark.asyncio
+async def test_get_monitor_response_time():
     client = make_client()
     client._transport.call_tool.return_value = {
         "timeGroups": [{"time": "2026-01-01", "avgResponseTime": 120, "count": 10}],
     }
-    result = client.get_monitor_response_time("mon_1")
+    result = await client.get_monitor_response_time("mon_1")
     assert isinstance(result, ResponseTimeReport)
     assert result.time_groups[0].avg_response_time == 120
     client._transport.call_tool.assert_called_once_with(
@@ -128,32 +143,35 @@ def test_get_monitor_response_time():
     )
 
 
-def test_get_monitor_mtta_with_uuid():
+@pytest.mark.asyncio
+async def test_get_monitor_mtta_with_uuid():
     client = make_client()
     client._transport.call_tool.return_value = {
         "monitors": [],
         "totalAcknowledged": 0,
         "mtta": 45,
     }
-    result = client.get_monitor_mtta(monitor_uuid="mon_1")
+    result = await client.get_monitor_mtta(monitor_uuid="mon_1")
     assert isinstance(result, MttaReport)
     assert result.mtta == 45
     client._transport.call_tool.assert_called_once_with("get_monitor_mtta", {"uuid": "mon_1"})
 
 
-def test_get_monitor_mtta_without_uuid():
+@pytest.mark.asyncio
+async def test_get_monitor_mtta_without_uuid():
     client = make_client()
     client._transport.call_tool.return_value = {
         "monitors": [],
         "totalAcknowledged": 0,
         "mtta": 60,
     }
-    result = client.get_monitor_mtta()
+    result = await client.get_monitor_mtta()
     assert isinstance(result, MttaReport)
     client._transport.call_tool.assert_called_once_with("get_monitor_mtta", {})
 
 
-def test_get_monitor_mttr():
+@pytest.mark.asyncio
+async def test_get_monitor_mttr():
     client = make_client()
     client._transport.call_tool.return_value = {
         "monitors": [],
@@ -162,13 +180,14 @@ def test_get_monitor_mttr():
         "mttr": 90,
         "mtta": 0,
     }
-    result = client.get_monitor_mttr(monitor_uuid="mon_1")
+    result = await client.get_monitor_mttr(monitor_uuid="mon_1")
     assert isinstance(result, MttrReport)
     assert result.mttr == 90
     client._transport.call_tool.assert_called_once_with("get_monitor_mttr", {"uuid": "mon_1"})
 
 
-def test_get_monitor_http_logs():
+@pytest.mark.asyncio
+async def test_get_monitor_http_logs():
     client = make_client()
     client._transport.call_tool.return_value = {
         "pings": [
@@ -188,65 +207,71 @@ def test_get_monitor_http_logs():
         "pagination": {},
         "totals": {},
     }
-    result = client.get_monitor_http_logs("mon_1")
+    result = await client.get_monitor_http_logs("mon_1")
     assert isinstance(result, ProbeLogResponse)
     assert result.pings[0].status_code == 200
     client._transport.call_tool.assert_called_once_with("get_monitor_http_logs", {"uuid": "mon_1"})
 
 
-def test_list_recent_alerts():
+@pytest.mark.asyncio
+async def test_list_recent_alerts():
     client = make_client()
     client._transport.call_tool.return_value = {
         "timeGroups": [{"time": "2026-01-01", "count": 3}],
     }
-    result = client.list_recent_alerts()
+    result = await client.list_recent_alerts()
     assert isinstance(result, AlertHistory)
     client._transport.call_tool.assert_called_once_with("list_recent_alerts", {})
 
 
-def test_get_on_call_schedule():
+@pytest.mark.asyncio
+async def test_get_on_call_schedule():
     client = make_client()
     client._transport.call_tool.return_value = {"uuid": "s1", "name": "Primary"}
-    result = client.get_on_call_schedule("s1")
+    result = await client.get_on_call_schedule("s1")
     assert isinstance(result, OnCallSchedule)
     client._transport.call_tool.assert_called_once_with("get_on_call_schedule", {"uuid": "s1"})
 
 
-def test_list_escalation_policies():
+@pytest.mark.asyncio
+async def test_list_escalation_policies():
     client = make_client()
     client._transport.call_tool.return_value = [
         {"uuid": "ep1", "name": "Default", "steps": []},
     ]
-    result = client.list_escalation_policies()
+    result = await client.list_escalation_policies()
     assert len(result) == 1
     assert isinstance(result[0], EscalationPolicy)
     client._transport.call_tool.assert_called_once_with("list_escalation_policies", {})
 
 
-def test_get_escalation_policy():
+@pytest.mark.asyncio
+async def test_get_escalation_policy():
     client = make_client()
     client._transport.call_tool.return_value = {
         "uuid": "ep1",
         "name": "Default",
         "steps": [],
     }
-    result = client.get_escalation_policy("ep1")
+    result = await client.get_escalation_policy("ep1")
     assert isinstance(result, EscalationPolicy)
     client._transport.call_tool.assert_called_once_with("get_escalation_policy", {"uuid": "ep1"})
 
 
-def test_list_integrations():
+@pytest.mark.asyncio
+async def test_list_integrations():
     client = make_client()
     client._transport.call_tool.return_value = [
         {"uuid": "int1", "name": "Slack", "type": "slack", "active": True},
     ]
-    result = client.list_integrations()
+    result = await client.list_integrations()
     assert len(result) == 1
     assert isinstance(result[0], Integration)
     client._transport.call_tool.assert_called_once_with("list_integrations", {})
 
 
-def test_get_integration():
+@pytest.mark.asyncio
+async def test_get_integration():
     client = make_client()
     client._transport.call_tool.return_value = {
         "uuid": "int1",
@@ -254,6 +279,6 @@ def test_get_integration():
         "type": "slack",
         "active": True,
     }
-    result = client.get_integration("int1")
+    result = await client.get_integration("int1")
     assert isinstance(result, Integration)
     client._transport.call_tool.assert_called_once_with("get_integration", {"uuid": "int1"})

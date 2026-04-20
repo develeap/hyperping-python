@@ -15,11 +15,11 @@ class OutageAction(BaseModel):
       - POST /v2/outages/{uuid}/resolve
       - POST /v2/outages/{uuid}/escalate
 
-    Uses ``extra="ignore"`` to tolerate additional fields the API may return
-    and ``frozen=True`` for immutability.
+    Uses ``extra="allow"`` so new API fields are preserved instead of silently
+    dropped, and ``frozen=True`` for immutability.
     """
 
-    model_config = ConfigDict(extra="ignore", populate_by_name=True, frozen=True)
+    model_config = ConfigDict(extra="allow", populate_by_name=True, frozen=True)
 
     status: str = Field(
         ..., description='Action result, e.g. "acknowledged", "resolved", "escalated"'
@@ -39,11 +39,11 @@ class Outage(BaseModel):
 
     API: GET /v2/outages
 
-    Uses ``extra="ignore"`` and ``frozen=True`` to tolerate undocumented fields
-    and ensure immutability.
+    Uses ``extra="allow"`` so new API fields are preserved instead of silently
+    dropped, and ``frozen=True`` for immutability.
     """
 
-    model_config = ConfigDict(extra="ignore", populate_by_name=True, frozen=True)
+    model_config = ConfigDict(extra="allow", populate_by_name=True, frozen=True)
 
     uuid: str = Field(..., description="Outage UUID")
     monitor_uuid: str | None = Field(
@@ -81,25 +81,36 @@ class Outage(BaseModel):
 
 
 class OutageTimelineEvent(BaseModel):
-    """Single event in an outage lifecycle timeline.
+    """Single event in an outage lifecycle timeline."""
 
-    Events include detection, cross-region verification, alert dispatch,
-    acknowledgement, and resolution.
-    """
+    model_config = ConfigDict(extra="allow", populate_by_name=True, frozen=True)
 
-    model_config = ConfigDict(extra="ignore", populate_by_name=True, frozen=True)
-
-    event_type: str = Field(..., alias="eventType", description="Event category")
+    type: str = Field(..., description="Event type (anomaly_detected, outage_detected, etc.)")
     timestamp: str = Field(..., description="Event time ISO 8601")
-    detail: str | None = Field(default=None, description="Event detail text")
+    data: dict[str, Any] = Field(default_factory=dict, description="Event-specific payload")
+
+
+class OutageMonitorSummary(BaseModel):
+    """Monitor summary embedded in outage timeline responses."""
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True, frozen=True)
+
+    uuid: str = Field(..., description="Monitor UUID")
+    name: str = Field(default="", description="Monitor name")
+    url: str = Field(default="", description="Monitor URL")
+    protocol: str = Field(default="", description="Monitor protocol")
 
 
 class OutageTimeline(BaseModel):
-    """Full lifecycle timeline for an outage."""
+    """Full outage timeline from get_outage_timeline."""
 
-    model_config = ConfigDict(extra="ignore", populate_by_name=True, frozen=True)
+    model_config = ConfigDict(extra="allow", populate_by_name=True, frozen=True)
 
-    outage_uuid: str = Field(..., alias="outageUuid", description="Outage UUID")
-    events: list[OutageTimelineEvent] = Field(
-        default_factory=list, description="Chronological list of events"
+    outage: Outage = Field(..., description="Outage details")
+    monitor: OutageMonitorSummary = Field(..., description="Monitor details")
+    escalation_policy: dict[str, Any] | None = Field(
+        default=None, alias="escalationPolicy", description="Linked escalation policy"
+    )
+    timeline: list[OutageTimelineEvent] = Field(
+        default_factory=list, description="Chronological event list"
     )

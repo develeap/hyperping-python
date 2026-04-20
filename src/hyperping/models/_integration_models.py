@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class Integration(BaseModel):
     """Configured notification integration (Slack, Teams, PagerDuty, etc.)."""
 
-    model_config = ConfigDict(extra="ignore", populate_by_name=True, frozen=True)
+    model_config = ConfigDict(extra="allow", populate_by_name=True, frozen=True)
 
     uuid: str = Field(..., description="Integration UUID")
     name: str = Field(..., description="Integration display name")

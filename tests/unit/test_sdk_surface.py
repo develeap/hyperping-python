@@ -1130,3 +1130,65 @@ class TestModelValidation:
         )
         maint.name = "Updated MW"
         assert maint.name == "Updated MW"
+
+
+# ==================== Protocol base classes ====================
+
+
+class TestProtocolBaseClasses:
+    """Verify the protocol base classes raise NotImplementedError."""
+
+    def test_sync_protocol_request_raises(self) -> None:
+        from hyperping._protocols import _ClientProtocol
+
+        proto = _ClientProtocol()
+        with pytest.raises(NotImplementedError, match="HyperpingClient"):
+            proto._request("GET", "/test")
+
+    def test_async_protocol_request_raises(self) -> None:
+        import asyncio
+
+        from hyperping._protocols import _AsyncClientProtocol
+
+        proto = _AsyncClientProtocol()
+        with pytest.raises(NotImplementedError, match="AsyncHyperpingClient"):
+            asyncio.get_event_loop().run_until_complete(proto._request("GET", "/test"))
+
+
+# ==================== Deprecated aliases in hyperping.models ====================
+
+
+class TestModelsDeprecatedAliases:
+    """Verify deprecated aliases accessed via hyperping.models emit warnings."""
+
+    def test_incident_status_alias_emits_warning(self) -> None:
+        import warnings
+
+        import hyperping.models as models_pkg
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            val = models_pkg.IncidentStatus  # noqa: B018
+            assert val is models_pkg.IncidentUpdateType
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "IncidentStatus" in str(w[0].message)
+
+    def test_incident_update_create_alias_emits_warning(self) -> None:
+        import warnings
+
+        import hyperping.models as models_pkg
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            val = models_pkg.IncidentUpdateCreate  # noqa: B018
+            assert val is models_pkg.AddIncidentUpdateRequest
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "IncidentUpdateCreate" in str(w[0].message)
+
+    def test_unknown_attribute_raises_attribute_error(self) -> None:
+        import hyperping.models as models_pkg
+
+        with pytest.raises(AttributeError, match="no attribute"):
+            models_pkg.NonExistentAttribute  # noqa: B018

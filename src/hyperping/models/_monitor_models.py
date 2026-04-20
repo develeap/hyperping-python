@@ -337,7 +337,7 @@ class MonitorUpdate(BaseModel):
 class Monitor(MonitorBase):
     """Model for a monitor response from Hyperping API."""
 
-    model_config = ConfigDict(extra="ignore", populate_by_name=True, frozen=True)
+    model_config = ConfigDict(extra="allow", populate_by_name=True, frozen=True)
 
     uuid: str = Field(..., description="Monitor unique identifier (mon_xxx)")
     project_uuid: str | None = Field(default=None, alias="projectUuid")
@@ -398,7 +398,7 @@ class OutageDetail(BaseModel):
     start_date: str = Field(..., alias="startDate")
     end_date: str = Field(..., alias="endDate")
 
-    model_config = ConfigDict(populate_by_name=True, frozen=True, extra="ignore")
+    model_config = ConfigDict(populate_by_name=True, frozen=True, extra="allow")
 
 
 class OutageStats(BaseModel):
@@ -428,7 +428,7 @@ class MonitorReport(BaseModel):
     API: GET /v2/reporting/monitor-reports?period=30d
     """
 
-    model_config = ConfigDict(extra="ignore", populate_by_name=True, frozen=True)
+    model_config = ConfigDict(extra="allow", populate_by_name=True, frozen=True)
 
     uuid: str = Field(..., description="Monitor UUID")
     name: str = Field(..., description="Monitor name")
@@ -445,7 +445,7 @@ class MonitorReport(BaseModel):
 class MonitorListResponse(BaseModel):
     """Response model for list monitors endpoint."""
 
-    model_config = ConfigDict(extra="ignore", frozen=True)
+    model_config = ConfigDict(extra="allow", frozen=True)
 
     monitors: list[Monitor] = Field(default_factory=list)
     total: int = Field(default=0)
@@ -458,7 +458,7 @@ class APIErrorResponse(BaseModel):
     who parse error JSON manually. Consider private if unused by callers.
     """
 
-    model_config = ConfigDict(extra="ignore", frozen=True)
+    model_config = ConfigDict(extra="allow", frozen=True)
 
     error: str = Field(default="Unknown error")
     message: str | None = None
