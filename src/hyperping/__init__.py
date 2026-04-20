@@ -15,7 +15,6 @@ Quick start::
 """
 
 from hyperping._async_client import AsyncHyperpingClient
-from hyperping._mcp_transport import MCP_URL
 from hyperping._version import __version__
 from hyperping.client import (
     CircuitBreaker,
@@ -26,6 +25,7 @@ from hyperping.client import (
 )
 from hyperping.endpoints import (
     API_BASE,
+    MCP_URL,
     APIVersion,
     Endpoint,
 )

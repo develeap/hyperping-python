@@ -18,7 +18,8 @@ from typing import Any
 
 from pydantic import SecretStr
 
-from hyperping._mcp_transport import MCP_URL, McpTransport
+from hyperping._mcp_transport import McpTransport
+from hyperping.endpoints import MCP_URL
 
 
 class HyperpingMcpClient:

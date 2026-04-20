@@ -77,6 +77,17 @@ def test_call_tool_http_401():
 
 
 @respx.mock
+def test_call_tool_http_403():
+    """MCP server returns 403 (not 401) for invalid API keys."""
+    respx.post(MCP_URL).mock(return_value=httpx.Response(403, text="Forbidden"))
+    transport = McpTransport(api_key="sk_bad", base_url=MCP_URL)
+    transport._initialized = True
+    with pytest.raises(HyperpingAuthError):
+        transport.call_tool("list_team_members")
+    transport.close()
+
+
+@respx.mock
 def test_call_tool_jsonrpc_error():
     respx.post(MCP_URL).mock(
         return_value=httpx.Response(

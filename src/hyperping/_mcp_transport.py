@@ -8,9 +8,10 @@ from typing import Any
 import httpx
 from pydantic import SecretStr
 
+from hyperping._version import __version__
+from hyperping.endpoints import MCP_URL
 from hyperping.exceptions import HyperpingAPIError, HyperpingAuthError
 
-MCP_URL = "https://api.hyperping.io/v1/mcp"
 _PROTOCOL_VERSION = "2025-03-26"
 
 
@@ -61,7 +62,7 @@ class McpTransport:
 
         resp = self._client.post(self._url, content=json.dumps(payload))
 
-        if resp.status_code == 401:
+        if resp.status_code in (401, 403):
             raise HyperpingAuthError("Invalid or expired API key")
         if resp.status_code == 202:
             return None  # Notification accepted
@@ -91,7 +92,7 @@ class McpTransport:
             {
                 "protocolVersion": _PROTOCOL_VERSION,
                 "capabilities": {},
-                "clientInfo": {"name": "hyperping-python", "version": "1.4.0"},
+                "clientInfo": {"name": "hyperping-python", "version": __version__},
             },
         )
         self._send_rpc("notifications/initialized", is_notification=True)
