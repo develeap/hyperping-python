@@ -61,6 +61,18 @@ async def main():
 
 The async client supports all the same resources, retry behaviour, and circuit breaker as the sync client. Use `RetryConfig` and `CircuitBreakerConfig` in exactly the same way.
 
+An async MCP client is also available:
+
+```python
+from hyperping import AsyncHyperpingMcpClient
+
+async def main():
+    async with AsyncHyperpingMcpClient(api_key="sk_...") as mcp:
+        summary = await mcp.get_status_summary()
+        members = await mcp.list_team_members()
+        anomalies = await mcp.get_monitor_anomalies("mon_uuid")
+```
+
 ## Authentication
 
 Pass your API key directly or via environment variable:

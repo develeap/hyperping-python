@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-04-20
+
+### Added
+
+- **`AsyncHyperpingMcpClient`** -- full async counterpart to `HyperpingMcpClient`. All 16
+  MCP methods available via `await`. Uses `httpx.AsyncClient`, `asyncio.Lock`, and async
+  retry with `asyncio.sleep`. Exported from `hyperping` top-level.
+- **Typed MCP returns** -- all 16 MCP client methods now return Pydantic models instead of
+  raw `dict[str, Any]`. Models verified against the live API.
+- **New models**: `TimeGroup`, `ResponseTimeReport`, `AlertHistory`, `MonitorMetricsSummary`,
+  `MttrReport`, `MttaReport`, `ProbeLogResponse`, `TeamMember`, `OutageMonitorSummary`.
+- **MCP error handling parity** -- both sync and async transports now map HTTP 404, 429,
+  400/422 to the same exception types as the REST client (`HyperpingNotFoundError`,
+  `HyperpingRateLimitError`, `HyperpingValidationError`).
+- **MCP retry logic** -- automatic retry with exponential backoff on transient server
+  errors (500, 502, 503, 504) up to `max_retries` times (default 2).
+- **Thread safety** -- `threading.Lock` (sync) and `asyncio.Lock` (async) protect the
+  request ID counter and initialization flag.
+- **83 new tests** covering async MCP transport, client coverage, sync transport error
+  paths, async maintenance/outages, and protocol base classes. Overall coverage: 96%.
+
+### Changed
+
+- **Forward-compatible models** -- all 28 response models changed from `extra="ignore"` to
+  `extra="allow"`. New API fields are preserved instead of silently dropped.
+- **Typed sub-objects** -- `OutageTimeline.outage` is now typed `Outage` (was `dict`),
+  `.monitor` is `OutageMonitorSummary` (was `dict`).
+
 ## [1.4.1] - 2026-04-20
 
 ### Fixed
