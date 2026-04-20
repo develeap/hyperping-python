@@ -69,7 +69,7 @@ class McpTransport:
             raise HyperpingAPIError(
                 f"MCP server returned HTTP {resp.status_code}",
                 status_code=resp.status_code,
-                response_body=resp.text[:500],
+                response_body={"raw": resp.text[:500]},
             )
         if is_notification:
             return None
@@ -80,9 +80,9 @@ class McpTransport:
             raise HyperpingAPIError(
                 f"MCP error {err.get('code', '?')}: {err.get('message', 'unknown')}",
                 status_code=resp.status_code,
-                response_body=json.dumps(err),
+                response_body=err,
             )
-        return data
+        return data  # type: ignore[no-any-return]
 
     def initialize(self) -> dict[str, Any]:
         """Perform MCP handshake. Called automatically on first tool call."""
@@ -132,7 +132,7 @@ class McpTransport:
             raise HyperpingAPIError(
                 f"Failed to parse MCP tool response: {exc}",
                 status_code=200,
-                response_body=text[:500],
+                response_body={"raw": text[:500]},
             ) from exc
 
     def close(self) -> None:
