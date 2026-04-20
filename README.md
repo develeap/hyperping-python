@@ -144,6 +144,43 @@ sub  = client.add_subscriber("sp_uuid", "user@example.com")
 client.remove_subscriber("sp_uuid", sub.id)
 ```
 
+### MCP Client (on-call, alerts, anomalies, integrations)
+
+Some Hyperping features are only available via the MCP server (JSON-RPC 2.0),
+not the REST API. Use `HyperpingMcpClient` for these:
+
+```python
+from hyperping import HyperpingMcpClient
+
+with HyperpingMcpClient(api_key="sk_...") as mcp:
+    # Status & reporting
+    summary = mcp.get_status_summary()
+    mtta = mcp.get_monitor_mtta("mon_uuid")
+    mttr = mcp.get_monitor_mttr("mon_uuid")
+    response_time = mcp.get_monitor_response_time("mon_uuid")
+
+    # On-call & escalation
+    schedules = mcp.list_on_call_schedules()
+    policies = mcp.list_escalation_policies()
+    members = mcp.list_team_members()
+
+    # Observability
+    anomalies = mcp.get_monitor_anomalies("mon_uuid")
+    logs = mcp.get_monitor_http_logs("mon_uuid")
+    alerts = mcp.list_recent_alerts()
+
+    # Integrations
+    integrations = mcp.list_integrations()
+
+    # Outage timeline & monitor search
+    timeline = mcp.get_outage_timeline("out_uuid")
+    results = mcp.search_monitors_by_name("api")
+```
+
+The MCP client uses the same API key as `HyperpingClient`. All methods return
+plain dicts/lists; use the exported Pydantic models (e.g., `OnCallSchedule`,
+`EscalationPolicy`) for validation if needed.
+
 ### Healthchecks
 
 ```python

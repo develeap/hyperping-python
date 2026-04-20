@@ -5,6 +5,76 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-04-19
+
+### Added
+
+- **`HyperpingMcpClient`** -- new client for Hyperping MCP server features not available
+  via the REST API. Uses JSON-RPC 2.0 over HTTP at `/v1/mcp` with the same Bearer token
+  API key. Provides 16 typed methods: `get_status_summary`, `get_monitor_response_time`,
+  `get_monitor_mtta`, `get_monitor_mttr`, `get_monitor_anomalies`, `get_monitor_http_logs`,
+  `list_recent_alerts`, `list_on_call_schedules`, `get_on_call_schedule`,
+  `list_escalation_policies`, `get_escalation_policy`, `list_team_members`,
+  `list_integrations`, `get_integration`, `get_outage_timeline`, `search_monitors_by_name`.
+- **`McpTransport`** -- low-level JSON-RPC 2.0 transport with auto-initialization handshake,
+  double-parse response extraction, and error mapping to existing SDK exception types.
+- **`MCP_URL`** constant exported from `hyperping` top-level.
+- **Sync outage methods** -- `create_outage`, `delete_outage`, `get_outage`,
+  `unacknowledge_outage` added to `OutagesMixin` (were only in async client).
+- **Verification script** -- `scripts/verify_endpoints.py` for testing endpoints against
+  the live API.
+
+### Changed
+
+- **Maintenance update** uses `model_dump(include=...)` instead of hard-coded field list.
+- **Incident update error handling** -- `add_incident_update` now provides context when
+  the POST succeeds but the follow-up GET fails.
+
+### Removed
+
+- **Speculative REST methods** -- 12 methods that called nonexistent REST endpoints
+  (on-call, alerts, anomalies, integrations, probe logs, response time, MTTA, status
+  summary, outage timeline, monitor search) removed from `HyperpingClient` and
+  `AsyncHyperpingClient`. These features are MCP-only; use `HyperpingMcpClient` instead.
+- **8 speculative mixin files** (sync + async) deleted.
+- **8 speculative Endpoint enum entries** removed from `endpoints.py`.
+
+### Fixed
+
+- HTTP 403 from MCP server now correctly raises `HyperpingAuthError` (was
+  `HyperpingAPIError`). Matches REST client behavior.
+- `MCP_URL` defined in single location (`endpoints.py`), not duplicated.
+- MCP handshake version uses `__version__` instead of hardcoded string.
+- `pytest` bumped to 9.0.3 (CVE-2025-71176).
+
+## [1.3.0] - 2026-04-18 [YANKED]
+
+v1.3.0 added 18 speculative REST methods for MCP-discovered features (reporting,
+observability, on-call, integrations). All 12 endpoint paths were guessed from MCP
+tool names and **none of them work via the REST API** (verified: 10x 404, 2x 401).
+These features are only accessible through the MCP server (JSON-RPC 2.0). Superseded
+by v1.4.0 which replaces the broken REST methods with a proper `HyperpingMcpClient`.
+
+## [1.2.1] - 2026-04-17
+
+### Fixed
+
+- Bump `pytest` to 9.0.3 (CVE-2025-71176).
+
+## [1.2.0] - 2026-04-17
+
+### Added
+
+- **Sync outage methods** -- `create_outage`, `delete_outage`, `get_outage`,
+  `unacknowledge_outage` added to `OutagesMixin` for feature parity with async client.
+
+### Changed
+
+- **Maintenance update** uses `model_dump(include=...)` instead of hard-coded field
+  enumeration for robustness.
+- **Incident update error handling** -- `add_incident_update` now provides context when
+  the POST succeeds but the follow-up GET fails.
+
 ## [1.1.0] - 2026-04-09
 
 ### Added
@@ -29,6 +99,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   constants used by both sync and async monitor mixins.
 - **`collect_all_pages` / `collect_all_pages_async`** helpers in `_utils.py` for
   transparent multi-page result aggregation.
+
+## [1.0.1] - 2026-04-05
+
+### Fixed
+
+- Fix version string in `pyproject.toml` (was out of sync with `_version.py`).
+- Fix package metadata: incorrect email address in project config.
 
 ## [1.0.0] - 2026-04-05
 
