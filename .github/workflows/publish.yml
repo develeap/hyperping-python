@@ -16,8 +16,17 @@ jobs:
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
         with: { python-version: "3.12" }
       - run: uv sync --all-extras
-      - name: Audit dependencies
-        run: uv run pip-audit
+      - name: Audit runtime dependencies
+        # Audit the runtime dependency closure (what users actually install
+        # via `pip install hyperping`), not the full venv. The venv contains
+        # build/dev tooling such as `pip` itself which is not shipped in the
+        # wheel; auditing the env conflates "vulnerabilities in our package"
+        # with "vulnerabilities in CI tooling" and produces release-blocking
+        # noise for CVEs that don't reach users.
+        run: |
+          uv export --no-dev --no-emit-project --no-hashes \
+            --format requirements.txt -o /tmp/runtime-requirements.txt
+          uv run pip-audit -r /tmp/runtime-requirements.txt
       - run: uv run pytest
       - run: uv build
 
