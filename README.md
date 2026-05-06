@@ -252,6 +252,29 @@ client = HyperpingClient(
 )
 ```
 
+### Per-endpoint circuit breaker
+
+By default a single shared circuit breaker covers every request. If one endpoint flakes, every other endpoint is also blocked. Enable `per_endpoint_circuit_breaker=True` to keep one breaker per request path so a failing endpoint does not punish healthy ones:
+
+```python
+client = HyperpingClient(
+    api_key="sk_...",
+    per_endpoint_circuit_breaker=True,
+)
+
+# Inspect state for a specific path:
+from hyperping import CircuitState, Endpoint
+
+state = client.circuit_breaker_state_for(str(Endpoint.MONITORS))
+assert state in {CircuitState.CLOSED, CircuitState.HALF_OPEN, CircuitState.OPEN}
+```
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `per_endpoint_circuit_breaker` | `bool` | `False` | When `True`, maintain a separate circuit breaker per request path (query string and fragment ignored). The same `circuit_breaker_config` applies to every per-path breaker. The shared breaker remains accessible via `client.circuit_breaker`; per-path state is read via `client.circuit_breaker_state_for(path)`. |
+
+The same option is available on `AsyncHyperpingClient`.
+
 ## Type Safety
 
 This package ships a `py.typed` marker (PEP 561) and is fully typed. Works out of the box with mypy and pyright.

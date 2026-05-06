@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Per-endpoint circuit breaker option (`per_endpoint_circuit_breaker: bool = False`) on
+  `HyperpingClient` and `AsyncHyperpingClient`. When enabled, each request path gets its
+  own breaker state so a single flaky endpoint no longer blocks traffic to healthy ones.
+  Default behaviour is unchanged. State for a given path is readable via
+  `client.circuit_breaker_state_for(path)`. See README for details.
+
 ## [1.5.0] - 2026-04-20
 
 ### Added
