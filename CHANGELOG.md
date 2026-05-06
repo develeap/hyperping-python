@@ -10,10 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Per-endpoint circuit breaker option (`per_endpoint_circuit_breaker: bool = False`) on
-  `HyperpingClient` and `AsyncHyperpingClient`. When enabled, each request path gets its
-  own breaker state so a single flaky endpoint no longer blocks traffic to healthy ones.
-  Default behaviour is unchanged. State for a given path is readable via
-  `client.circuit_breaker_state_for(path)`. See README for details.
+  `HyperpingClient` and `AsyncHyperpingClient`. When enabled, each `Endpoint` gets its own
+  breaker state so a single flaky endpoint no longer blocks traffic to healthy ones.
+  Sub-resource paths (e.g. `/v1/monitors/{uuid}`, `/v1/monitors/{uuid}/reports`) are
+  bucketed under their parent `Endpoint` prefix so the breaker set stays bounded; pass a
+  custom `breaker_key_fn` to change that. The OPEN-state error message now identifies
+  which endpoint tripped. State for a given path is readable via
+  `client.circuit_breaker_state_for(path)` in either mode. Default behaviour is
+  unchanged. See README for details.
 
 ## [1.5.0] - 2026-04-20
 

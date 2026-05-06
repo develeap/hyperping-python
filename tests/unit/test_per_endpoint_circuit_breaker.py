@@ -31,6 +31,23 @@ def _cb_config(threshold: int = 2) -> CircuitBreakerConfig:
     return CircuitBreakerConfig(failure_threshold=threshold, recovery_timeout=60.0)
 
 
+def _monitor_payload(uuid: str) -> dict:
+    """Minimal monitor payload that satisfies Monitor.model_validate()."""
+    return {
+        "monitorUuid": uuid,
+        "name": uuid,
+        "url": "https://example.com",
+        "method": "GET",
+        "frequency": 60,
+        "timeout": 10,
+        "regions": ["london"],
+        "headers": {},
+        "expectedStatus": 200,
+        "down": False,
+        "paused": False,
+    }
+
+
 # ==================== sync ====================
 
 
@@ -130,11 +147,136 @@ class TestPerEndpointCircuitBreakerSync:
         assert client.circuit_breaker_state_for("/v1/unused") == CircuitState.CLOSED
         client.close()
 
-    def test_state_for_requires_per_endpoint_mode(self) -> None:
-        """Calling the per-path accessor without the flag is a misuse — surface it."""
-        client = HyperpingClient(api_key="sk_test")
-        with pytest.raises(RuntimeError, match="per_endpoint_circuit_breaker"):
-            client.circuit_breaker_state_for("/v1/monitors")
+    @respx.mock
+    def test_state_for_default_mode_returns_shared_state(self) -> None:
+        """In default mode, state_for(any_path) reflects the single shared breaker."""
+        client = HyperpingClient(
+            api_key="sk_test",
+            retry_config=RetryConfig(max_retries=0),
+            circuit_breaker_config=_cb_config(threshold=1),
+        )
+        # Untripped: any path reports CLOSED, identical to the shared breaker.
+        assert client.circuit_breaker_state_for("/v1/monitors") == CircuitState.CLOSED
+        assert client.circuit_breaker_state_for("/anything") == CircuitState.CLOSED
+
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(
+            return_value=httpx.Response(500, json={"error": "boom"}),
+        )
+        with pytest.raises(HyperpingAPIError):
+            client.list_monitors()
+
+        # Shared breaker is now OPEN; state_for reports OPEN regardless of path.
+        assert client.circuit_breaker.state == CircuitState.OPEN
+        assert client.circuit_breaker_state_for("/v1/monitors") == CircuitState.OPEN
+        assert client.circuit_breaker_state_for("/v3/incidents") == CircuitState.OPEN
+        client.close()
+
+    @respx.mock
+    def test_default_canonicalization_buckets_by_endpoint(self) -> None:
+        """`/v1/monitors/{uuid}` and `/v1/monitors` share one breaker; other endpoints don't."""
+        client = HyperpingClient(
+            api_key="sk_test",
+            retry_config=RetryConfig(max_retries=0),
+            circuit_breaker_config=_cb_config(threshold=2),
+            per_endpoint_circuit_breaker=True,
+        )
+
+        # Two different monitor UUIDs both fail with 5xx.
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}/mon_A").mock(
+            return_value=httpx.Response(500, json={"error": "boom"}),
+        )
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}/mon_B").mock(
+            return_value=httpx.Response(500, json={"error": "boom"}),
+        )
+        respx.get(f"{API_BASE}{Endpoint.INCIDENTS}").mock(
+            return_value=httpx.Response(200, json={"incidents": []}),
+        )
+
+        # Two failures on mon_A trip the shared `/v1/monitors` breaker.
+        with pytest.raises(HyperpingAPIError):
+            client.get_monitor("mon_A")
+        with pytest.raises(HyperpingAPIError):
+            client.get_monitor("mon_A")
+
+        # mon_B is now blocked too — it shares the `/v1/monitors` bucket. No HTTP
+        # request is made (no mock interaction needed beyond the route).
+        with pytest.raises(HyperpingAPIError, match="Circuit breaker OPEN"):
+            client.get_monitor("mon_B")
+
+        # The list endpoint also falls under `/v1/monitors` and is blocked.
+        with pytest.raises(HyperpingAPIError, match="Circuit breaker OPEN"):
+            client.list_monitors()
+
+        # A different endpoint (`/v3/incidents`) is unaffected.
+        assert client.list_incidents() == []
+
+        # State queries: any monitor sub-path resolves to the same key.
+        assert client.circuit_breaker_state_for(f"{Endpoint.MONITORS}/mon_A") == CircuitState.OPEN
+        assert client.circuit_breaker_state_for(f"{Endpoint.MONITORS}/mon_B") == CircuitState.OPEN
+        assert client.circuit_breaker_state_for(str(Endpoint.MONITORS)) == CircuitState.OPEN
+        assert client.circuit_breaker_state_for(str(Endpoint.INCIDENTS)) == CircuitState.CLOSED
+
+        client.close()
+
+    @respx.mock
+    def test_custom_breaker_key_fn(self) -> None:
+        """A caller-supplied key fn overrides the default endpoint bucketing."""
+        seen: list[str] = []
+
+        def per_uuid(path: str) -> str:
+            seen.append(path)
+            # Force one breaker per literal path (the pre-canonicalisation behaviour).
+            return path
+
+        client = HyperpingClient(
+            api_key="sk_test",
+            retry_config=RetryConfig(max_retries=0),
+            circuit_breaker_config=_cb_config(threshold=2),
+            per_endpoint_circuit_breaker=True,
+            breaker_key_fn=per_uuid,
+        )
+
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}/mon_A").mock(
+            return_value=httpx.Response(500, json={"error": "boom"}),
+        )
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}/mon_B").mock(
+            return_value=httpx.Response(200, json=_monitor_payload("mon_B")),
+        )
+
+        with pytest.raises(HyperpingAPIError):
+            client.get_monitor("mon_A")
+        with pytest.raises(HyperpingAPIError):
+            client.get_monitor("mon_A")
+
+        # With a per-UUID key fn, mon_B has its own breaker and the call goes through.
+        result = client.get_monitor("mon_B")
+        assert result.uuid == "mon_B"
+
+        assert seen, "custom key fn was not invoked"
+        assert client.circuit_breaker_state_for(f"{Endpoint.MONITORS}/mon_A") == CircuitState.OPEN
+        assert client.circuit_breaker_state_for(f"{Endpoint.MONITORS}/mon_B") == CircuitState.CLOSED
+
+        client.close()
+
+    @respx.mock
+    def test_open_error_message_includes_endpoint_key(self) -> None:
+        """OPEN error message identifies which endpoint was tripped."""
+        client = HyperpingClient(
+            api_key="sk_test",
+            retry_config=RetryConfig(max_retries=0),
+            circuit_breaker_config=_cb_config(threshold=1),
+            per_endpoint_circuit_breaker=True,
+        )
+        respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(
+            return_value=httpx.Response(500, json={"error": "boom"}),
+        )
+
+        with pytest.raises(HyperpingAPIError):
+            client.list_monitors()
+
+        with pytest.raises(HyperpingAPIError, match=r"Circuit breaker OPEN for '/v1/monitors'"):
+            client.list_monitors()
+
         client.close()
 
     @respx.mock
