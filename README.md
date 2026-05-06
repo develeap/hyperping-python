@@ -252,6 +252,48 @@ client = HyperpingClient(
 )
 ```
 
+### Per-endpoint circuit breaker
+
+By default a single shared circuit breaker covers every request. If one endpoint flakes, every other endpoint is also blocked. Enable `per_endpoint_circuit_breaker=True` to keep one breaker per *endpoint* so a failing endpoint does not punish healthy ones:
+
+```python
+client = HyperpingClient(
+    api_key="sk_...",
+    per_endpoint_circuit_breaker=True,
+)
+
+# Inspect state for an endpoint. The breaker key is canonicalised to the
+# matching `Endpoint` prefix, so all sub-resource paths share a bucket:
+from hyperping import CircuitState, Endpoint
+
+state = client.circuit_breaker_state_for(str(Endpoint.MONITORS))
+# /v1/monitors, /v1/monitors/mon_abc and /v1/monitors/mon_abc/reports all
+# report the same state — they share the `/v1/monitors` breaker.
+assert client.circuit_breaker_state_for(f"{Endpoint.MONITORS}/mon_abc") == state
+assert state in {CircuitState.CLOSED, CircuitState.HALF_OPEN, CircuitState.OPEN}
+```
+
+If you need different bucketing (e.g. one breaker per resource UUID, or a single breaker per HTTP verb), pass a `breaker_key_fn`:
+
+```python
+def per_resource(path: str) -> str:
+    # one breaker per literal request path
+    return path.split("?", 1)[0]
+
+client = HyperpingClient(
+    api_key="sk_...",
+    per_endpoint_circuit_breaker=True,
+    breaker_key_fn=per_resource,
+)
+```
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `per_endpoint_circuit_breaker` | `bool` | `False` | When `True`, maintain a separate circuit breaker keyed by request endpoint instead of using one shared breaker. The same `circuit_breaker_config` applies to every per-endpoint breaker. The shared breaker remains accessible via `client.circuit_breaker`. |
+| `breaker_key_fn` | `Callable[[str], str] \| None` | `None` | Override the default endpoint-prefix bucketing. Receives the request path and returns the breaker key. Default behaviour collapses every path under the matching `Endpoint` prefix so the breaker set stays bounded (one per `Endpoint`); a custom function takes responsibility for keeping the key set bounded. Ignored unless `per_endpoint_circuit_breaker=True`. |
+
+State for any path is readable via `client.circuit_breaker_state_for(path)`. In the default (single-breaker) mode this returns the shared breaker's state for any path, so the call is always safe regardless of the flag. The same options and method are available on `AsyncHyperpingClient`.
+
 ## Type Safety
 
 This package ships a `py.typed` marker (PEP 561) and is fully typed. Works out of the box with mypy and pyright.

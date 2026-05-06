@@ -10,9 +10,12 @@ Circuit-breaker types (``CircuitBreaker``, ``CircuitBreakerConfig``,
 
 import logging
 import random
+import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 from pydantic import SecretStr
@@ -30,7 +33,7 @@ from hyperping._maintenance_mixin import MaintenanceMixin
 from hyperping._monitors_mixin import MonitorsMixin
 from hyperping._outages_mixin import OutagesMixin
 from hyperping._statuspages_mixin import StatusPagesMixin
-from hyperping.endpoints import API_BASE
+from hyperping.endpoints import API_BASE, Endpoint
 from hyperping.exceptions import (
     HyperpingAPIError,
     HyperpingAuthError,
@@ -88,6 +91,8 @@ class HyperpingClient(
         retry_config: RetryConfig | None = None,
         circuit_breaker_config: CircuitBreakerConfig | None = None,
         user_agent: str | None = None,
+        per_endpoint_circuit_breaker: bool = False,
+        breaker_key_fn: Callable[[str], str] | None = None,
     ) -> None:
         """Initialize the Hyperping API client.
 
@@ -100,9 +105,28 @@ class HyperpingClient(
             retry_config: Retry behaviour configuration. Pass ``None`` for
                 defaults (3 retries, exponential backoff).
             circuit_breaker_config: Circuit breaker configuration. Pass ``None``
-                for defaults (5-failure threshold, 60 s recovery).
+                for defaults (5-failure threshold, 60 s recovery). When
+                ``per_endpoint_circuit_breaker`` is ``True`` this same config
+                is applied to every per-path breaker.
             user_agent: Custom ``User-Agent`` header value. Defaults to
                 ``hyperping-python/0.1.0``.
+            per_endpoint_circuit_breaker: When ``True``, maintain an independent
+                breaker per *endpoint* so a single flaky endpoint does not
+                block traffic to healthy ones. By default the breaker key is
+                the matching :class:`~hyperping.endpoints.Endpoint` prefix:
+                ``/v1/monitors``, ``/v1/monitors/{uuid}`` and
+                ``/v1/monitors/{uuid}/anything`` all share one breaker keyed
+                on ``/v1/monitors``. This keeps the breaker set bounded
+                (one per Endpoint) instead of growing per resource UUID.
+                Default ``False`` preserves the original single-shared-breaker
+                behaviour.
+            breaker_key_fn: Override the default endpoint-prefix bucketing.
+                Receives the request path (with query/fragment intact) and
+                must return the breaker key. Use this if you want different
+                granularity (e.g. one breaker per resource UUID, or a single
+                breaker for all monitor sub-paths). Ignored unless
+                ``per_endpoint_circuit_breaker`` is ``True``. *Caller is
+                responsible for keeping the key set bounded.*
         """
         raw_key = api_key.get_secret_value() if isinstance(api_key, SecretStr) else api_key
         if not raw_key or not raw_key.strip():
@@ -111,7 +135,12 @@ class HyperpingClient(
         self.base_url = (base_url or self.DEFAULT_BASE_URL).rstrip("/")
         self.timeout = timeout
         self.retry_config = retry_config or DEFAULT_RETRY_CONFIG
+        self._circuit_breaker_config = circuit_breaker_config
         self._circuit_breaker = CircuitBreaker(circuit_breaker_config)
+        self._per_endpoint_circuit_breaker = per_endpoint_circuit_breaker
+        self._breaker_key_fn = breaker_key_fn
+        self._endpoint_breakers: dict[str, CircuitBreaker] = {}
+        self._endpoint_breakers_lock = threading.Lock()
 
         self._client = httpx.Client(
             base_url=self.base_url,
@@ -139,8 +168,83 @@ class HyperpingClient(
 
     @property
     def circuit_breaker(self) -> CircuitBreaker:
-        """Access the circuit breaker state (for monitoring)."""
+        """Access the (shared) circuit breaker state (for monitoring).
+
+        In per-endpoint mode this returns the original shared breaker, kept
+        for backward compatibility; the per-path breakers are exposed via
+        :meth:`circuit_breaker_state_for`.
+        """
         return self._circuit_breaker
+
+    def _resolve_breaker_key(self, path: str) -> str:
+        """Map a request path to its circuit-breaker key.
+
+        Default bucketing strips query/fragment and collapses the path under
+        the longest matching :class:`Endpoint` prefix, so every sub-resource
+        under an endpoint shares the parent's breaker. When the caller passes
+        a custom ``breaker_key_fn`` it wins outright.
+        """
+        if self._breaker_key_fn is not None:
+            return self._breaker_key_fn(path)
+        pure = urlsplit(path).path
+        for ep in Endpoint:
+            ep_value = ep.value
+            if pure == ep_value or pure.startswith(ep_value + "/"):
+                return ep_value
+        return pure
+
+    def _breaker_for(self, path: str) -> CircuitBreaker:
+        """Return the breaker that governs ``path``.
+
+        In default mode this is always the shared breaker; in per-endpoint
+        mode each canonical key gets its own :class:`CircuitBreaker` lazily.
+        """
+        if not self._per_endpoint_circuit_breaker:
+            return self._circuit_breaker
+        key = self._resolve_breaker_key(path)
+        # threading.Lock here (not asyncio.Lock) is intentional: it lets the
+        # same per-endpoint logic serve both the sync and async clients
+        # without forcing an `async` accessor, and it correctly serialises
+        # access if the async client is driven from multiple OS threads
+        # (e.g. via run_in_executor).
+        with self._endpoint_breakers_lock:
+            breaker = self._endpoint_breakers.get(key)
+            if breaker is None:
+                breaker = CircuitBreaker(self._circuit_breaker_config)
+                self._endpoint_breakers[key] = breaker
+            return breaker
+
+    def circuit_breaker_state_for(self, path: str) -> CircuitState:
+        """Return the circuit state of the breaker governing ``path``.
+
+        In per-endpoint mode the path is canonicalised the same way as during
+        a request (default endpoint-prefix bucketing, or ``breaker_key_fn``
+        if set); untouched buckets report :attr:`CircuitState.CLOSED` without
+        allocating a breaker. In the default single-breaker mode the shared
+        breaker's state is returned for any path, so this method is always
+        safe to call regardless of the flag.
+        """
+        if not self._per_endpoint_circuit_breaker:
+            return self._circuit_breaker.state
+        key = self._resolve_breaker_key(path)
+        with self._endpoint_breakers_lock:
+            breaker = self._endpoint_breakers.get(key)
+        return breaker.state if breaker is not None else CircuitState.CLOSED
+
+    def _circuit_open_message(self, breaker: CircuitBreaker, path: str) -> str:
+        """Build the error message raised when a request is rejected by an OPEN breaker."""
+        if self._per_endpoint_circuit_breaker:
+            key = self._resolve_breaker_key(path)
+            return (
+                f"Circuit breaker OPEN for {key!r} - API calls to this endpoint suspended. "
+                f"Consecutive failures: {breaker.failure_count}. "
+                f"Will recover after {breaker.recovery_timeout}s."
+            )
+        return (
+            f"Circuit breaker OPEN - API calls suspended. "
+            f"Consecutive failures: {breaker.failure_count}. "
+            f"Will recover after {breaker.recovery_timeout}s."
+        )
 
     # ==================== Error Handling ====================
 
@@ -310,7 +414,7 @@ class HyperpingClient(
             return response
 
         # Success
-        self._circuit_breaker.record_success()
+        self._breaker_for(path).record_success()
         if response.status_code == 204:
             return {}
         return response.json()  # type: ignore[no-any-return]
@@ -336,13 +440,9 @@ class HyperpingClient(
         Raises:
             HyperpingAPIError: On API errors after retries exhausted
         """
-        if not self._circuit_breaker.call_allowed():
-            cb = self._circuit_breaker
-            raise HyperpingAPIError(
-                f"Circuit breaker OPEN - API calls suspended. "
-                f"Consecutive failures: {cb.failure_count}. "
-                f"Will recover after {cb.recovery_timeout}s."
-            )
+        breaker = self._breaker_for(path)
+        if not breaker.call_allowed():
+            raise HyperpingAPIError(self._circuit_open_message(breaker, path))
 
         last_exception: Exception | None = None
         delay = self.retry_config.initial_delay
@@ -374,7 +474,7 @@ class HyperpingClient(
 
                 # Only trip circuit breaker on server errors, not client errors
                 if response.status_code >= 500:
-                    self._circuit_breaker.record_failure()
+                    breaker.record_failure()
                 self._handle_response_error(response)
 
             except (httpx.TimeoutException, httpx.RequestError) as e:
@@ -395,7 +495,7 @@ class HyperpingClient(
                         self.retry_config.max_delay,
                     )
                     continue
-                self._circuit_breaker.record_failure()
+                breaker.record_failure()
                 if isinstance(e, httpx.TimeoutException):
                     raise HyperpingAPIError(f"Request timeout after {max_attempts} attempts") from e
                 raise HyperpingAPIError(f"Request failed: {e}") from e

@@ -46,7 +46,7 @@ Agents: Security, Architecture, Code Quality, Refactor/Dead Code.
 
 - [x] **M1** Async client (`AsyncHyperpingClient`) — shipped in PR #13 (feature/sdk-py-03-async-client).
 - [x] **M2** Pagination (`page` param, `hasNextPage` auto-pagination via `collect_all_pages` / `collect_all_pages_async`) — shipped in PR #12 (merged) and PR #13.
-- [ ] **M3** Per-endpoint circuit breaker (`per_endpoint_circuit_breaker: bool = False` option). **Deferred — moderate scope, add in follow-up.**
+- [x] **M3** Per-endpoint circuit breaker (`per_endpoint_circuit_breaker: bool = False` option) on `HyperpingClient` and `AsyncHyperpingClient`. Per-path state via `circuit_breaker_state_for(path)`. Default off; existing single-shared-breaker behaviour preserved.
 - [x] **M4** `MonitorCreate` now has `@model_validator(mode="after")` that raises `ValueError` if DNS fields are set on non-DNS monitors.
 - [x] **M5** `MonitorListResponse` is in `__all__` — retained but documented as not returned by any client method. Will be used once pagination lands.
 - [x] **M6** `APIErrorResponse` removed from `__all__` (documented as intentionally internal in comment).
@@ -106,7 +106,7 @@ The following items require either a semver bump, a separate PR, or manual work:
 
 - ~~**M1** Async client~~ — shipped
 - ~~**M2** Pagination~~ — shipped
-- **M3** Per-endpoint circuit breaker option
+- ~~**M3** Per-endpoint circuit breaker option~~ — shipped
 - **M11** URL validation for HTTP-protocol monitors (cross-field, needs discriminated union work)
 - **M12** DateTime coercion (breaking change — v0.2.0)
 - **H11** Pin all GitHub Actions `uses:` to 40-char commit SHAs (requires per-tag SHA lookup)
