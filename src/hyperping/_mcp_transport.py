@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 from typing import Any
@@ -21,6 +22,9 @@ from hyperping.exceptions import (
 )
 
 _PROTOCOL_VERSION = "2025-03-26"
+
+_MCP_RATE_LIMIT_MARKER = "rate limit"
+_MCP_RATE_LIMIT_RETRY_AFTER_RE = re.compile(r"[Rr]etry after\s+(\d+)\s*s")
 
 
 class McpTransport:
@@ -52,6 +56,9 @@ class McpTransport:
         self._initialized = False
         self._request_id = 0
         self._lock = threading.Lock()
+        self._init_lock = threading.Lock()
+        self._init_blocked_until: float = 0.0
+        self._init_result: dict[str, Any] = {}
         self._max_retries = max_retries
 
     def _next_id(self) -> int:
@@ -113,6 +120,25 @@ class McpTransport:
         data = resp.json()
         if "error" in data:
             err = data["error"]
+            if (
+                isinstance(err, dict)
+                and err.get("code") == -32000
+                and isinstance(err.get("message"), str)
+                and _MCP_RATE_LIMIT_MARKER in err["message"].lower()
+            ):
+                rl_retry_after: int | None = None
+                match = _MCP_RATE_LIMIT_RETRY_AFTER_RE.search(err["message"])
+                if match:
+                    try:
+                        rl_retry_after = int(match.group(1))
+                    except ValueError:  # defensive; regex guarantees digits
+                        rl_retry_after = None
+                raise HyperpingRateLimitError(
+                    err["message"],
+                    retry_after=rl_retry_after,
+                    status_code=resp.status_code,
+                    response_body=err,
+                )
             raise HyperpingAPIError(
                 f"MCP error {err.get('code', '?')}: {err.get('message', 'unknown')}",
                 status_code=resp.status_code,
@@ -121,19 +147,45 @@ class McpTransport:
         return data  # type: ignore[no-any-return]
 
     def initialize(self) -> dict[str, Any]:
-        """Perform MCP handshake. Called automatically on first tool call."""
-        result = self._send_rpc(
-            "initialize",
-            {
-                "protocolVersion": _PROTOCOL_VERSION,
-                "capabilities": {},
-                "clientInfo": {"name": "hyperping-python", "version": __version__},
-            },
-        )
-        self._send_rpc("notifications/initialized", is_notification=True)
-        with self._lock:
-            self._initialized = True
-        return result.get("result", {}) if result else {}
+        """Perform MCP handshake if not yet performed. Idempotent and thread-safe.
+
+        Calling this more than once on the same transport is a no-op after the
+        first successful handshake. While an ``initialize`` cool-off latch is
+        active, raises :class:`HyperpingRateLimitError` without issuing any
+        HTTP request.
+        """
+        with self._init_lock:
+            if self._initialized:
+                return self._init_result
+            return self._initialize_locked()
+
+    def _initialize_locked(self) -> dict[str, Any]:
+        """Perform the handshake. Assumes ``self._init_lock`` is held."""
+        remaining = self._init_blocked_until - time.monotonic()
+        if remaining > 0:
+            raise HyperpingRateLimitError(
+                "MCP initialize rate limit cool-off active; retry later",
+                retry_after=int(remaining) + 1,
+                status_code=200,
+            )
+        try:
+            result = self._send_rpc(
+                "initialize",
+                {
+                    "protocolVersion": _PROTOCOL_VERSION,
+                    "capabilities": {},
+                    "clientInfo": {"name": "hyperping-python", "version": __version__},
+                },
+            )
+            self._send_rpc("notifications/initialized", is_notification=True)
+        except HyperpingRateLimitError as exc:
+            wait = exc.retry_after if exc.retry_after and exc.retry_after > 0 else 30
+            self._init_blocked_until = time.monotonic() + wait
+            raise
+        self._init_result = result.get("result", {}) if result else {}
+        self._initialized = True
+        self._init_blocked_until = 0.0
+        return self._init_result
 
     def call_tool(
         self,
@@ -145,13 +197,13 @@ class McpTransport:
         Auto-initializes on first call. Extracts and parses the JSON
         string from ``result.content[0].text``.
 
-        Retries automatically on transient server errors (HTTP 500, 502,
-        503, 504) up to ``max_retries`` times with exponential back-off.
+        Retries automatically on transient HTTP server errors (500, 502, 503, 504)
+        up to ``max_retries`` times with exponential back-off. Rate-limit errors
+        (HTTP 429 or JSON-RPC -32000) are NEVER retried at this layer; they raise
+        :class:`HyperpingRateLimitError` immediately so callers can honour
+        ``retry_after``.
         """
-        with self._lock:
-            needs_init = not self._initialized
-        if needs_init:
-            self.initialize()
+        self.initialize()
 
         last_exc: Exception | None = None
         for attempt in range(self._max_retries + 1):

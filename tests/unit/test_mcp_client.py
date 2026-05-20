@@ -1,7 +1,14 @@
 """Tests for the high-level MCP client."""
 
+from pathlib import Path
 from unittest.mock import MagicMock
 
+import httpx
+import pytest
+import respx
+
+from hyperping._mcp_transport import MCP_URL
+from hyperping.exceptions import HyperpingRateLimitError
 from hyperping.mcp_client import HyperpingMcpClient
 from hyperping.models._integration_models import Integration
 from hyperping.models._monitor_models import Monitor
@@ -257,3 +264,85 @@ def test_get_integration():
     result = client.get_integration("int1")
     assert isinstance(result, Integration)
     client._transport.call_tool.assert_called_once_with("get_integration", {"uuid": "int1"})
+
+
+# -- ensure_initialized() (Task 9 / Tests 14, 15) ----------------------------
+
+
+def test_ensure_initialized_delegates_to_transport():
+    client = make_client()
+    client.ensure_initialized()
+    client._transport.initialize.assert_called_once_with()
+
+
+def test_ensure_initialized_propagates_rate_limit():
+    client = make_client()
+    client._transport.initialize.side_effect = HyperpingRateLimitError(
+        "rate limited on initialize", retry_after=30, status_code=200,
+    )
+    with pytest.raises(HyperpingRateLimitError) as exc_info:
+        client.ensure_initialized()
+    assert exc_info.value.retry_after == 30
+    assert exc_info.value.status_code == 200
+
+
+@respx.mock
+def test_ensure_initialized_real_transport_is_idempotent():
+    """Calling ensure_initialized twice through the real transport POSTs only once."""
+    route = respx.post(MCP_URL).mock(
+        side_effect=[
+            httpx.Response(
+                200,
+                json={"jsonrpc": "2.0", "id": 1, "result": {"protocolVersion": "2025-03-26"}},
+            ),
+            httpx.Response(202),
+        ],
+    )
+    client = HyperpingMcpClient(api_key="sk_test", base_url=MCP_URL)
+    client.ensure_initialized()
+    client.ensure_initialized()
+    assert route.call_count == 2  # one initialize, one notification
+    client.close()
+
+
+# -- Docs artifact gate (Task 10/11 / Test 30) -------------------------------
+
+
+def _repo_root() -> Path:
+    # tests/unit/test_mcp_client.py -> repo root
+    return Path(__file__).resolve().parents[2]
+
+
+def test_readme_contains_mcp_rate_limits_section():
+    """README must document the MCP rate limit guidance shipped in this change."""
+    readme = (_repo_root() / "README.md").read_text(encoding="utf-8")
+    assert "### MCP rate limits and connection lifecycle" in readme, (
+        "README is missing the 'MCP rate limits and connection lifecycle' section"
+    )
+
+
+def test_changelog_contains_unreleased_entry():
+    """CHANGELOG must contain an [Unreleased] block with Added and Fixed."""
+    changelog = (_repo_root() / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert "\n## [Unreleased]\n" in changelog or changelog.startswith(
+        "## [Unreleased]\n"
+    ) or "## [Unreleased]" in changelog.splitlines(), (
+        "CHANGELOG is missing an '## [Unreleased]' top-level heading"
+    )
+    # Locate the Unreleased section and confirm subheadings appear within it
+    # (before the next ## release heading).
+    lines = changelog.splitlines()
+    start = None
+    for i, line in enumerate(lines):
+        if line.strip() == "## [Unreleased]":
+            start = i
+            break
+    assert start is not None, "CHANGELOG does not contain '## [Unreleased]'"
+    end = len(lines)
+    for j in range(start + 1, len(lines)):
+        if lines[j].startswith("## [") and lines[j].strip() != "## [Unreleased]":
+            end = j
+            break
+    section = "\n".join(lines[start:end])
+    assert "### Added" in section, "Unreleased section is missing '### Added'"
+    assert "### Fixed" in section, "Unreleased section is missing '### Fixed'"

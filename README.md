@@ -193,6 +193,51 @@ The MCP client uses the same API key as `HyperpingClient`. All methods return
 plain dicts/lists; use the exported Pydantic models (e.g., `OnCallSchedule`,
 `EscalationPolicy`) for validation if needed.
 
+### MCP rate limits and connection lifecycle
+
+The Hyperping MCP server (`https://api.hyperping.io/v1/mcp`) is stateless over HTTP
+and rate-limits per API key. The publicly documented limit is 300 requests per
+minute shared with the REST API, but the server also enforces a separate, low cap
+on the `initialize` handshake (observed around 5/minute). Because every new
+`HyperpingMcpClient` instance must perform the MCP `initialize` handshake on its
+first call, instantiating the client in a hot path or running several short-lived
+processes against one key will trip this cap.
+
+Operational guidance:
+
+- **Create one `HyperpingMcpClient` per process and reuse it.** Do not instantiate
+  it inside a loop. The first call performs the handshake; subsequent calls reuse
+  it for the life of the client.
+- **Catch `HyperpingRateLimitError` and honour `retry_after`.** Rate-limit signals
+  arrive two ways: as HTTP 429 (with a standard `Retry-After` header) and as a
+  JSON-RPC server error (`code: -32000`, HTTP 200) on `initialize`. Both surface as
+  `HyperpingRateLimitError` with `retry_after` parsed from whichever signal was
+  used. The `status_code` attribute is `429` or `200` respectively.
+- **Use `ensure_initialized()` for startup health checks.** Calling it once on
+  service boot lets you fail fast if the key is already at the `initialize` cap,
+  instead of failing on the first business call.
+- **Several workloads on one key collide on the `initialize` cap.** A weekly cron,
+  a watchdog daemon, and a developer running the CLI cannot all warm up the same
+  API key inside one minute. Use one long-lived process per workload, or separate
+  API keys per workload if your plan allows.
+- **After a rate-limit on `initialize`, the SDK latches a cool-off** so that
+  subsequent `call_tool` invocations on the same client fail fast with
+  `HyperpingRateLimitError` (no extra HTTP traffic) until `retry_after` elapses.
+  This prevents accidentally burning more slots from the bucket.
+
+```python
+from hyperping import HyperpingMcpClient, HyperpingRateLimitError
+
+mcp = HyperpingMcpClient(api_key="sk_...")
+try:
+    mcp.ensure_initialized()
+except HyperpingRateLimitError as e:
+    print(f"MCP cold-start rate-limited; retry in {e.retry_after}s")
+    raise
+
+summary = mcp.get_status_summary()
+```
+
 ### Healthchecks
 
 ```python

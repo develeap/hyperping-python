@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `ensure_initialized()` on `HyperpingMcpClient` and `AsyncHyperpingMcpClient` for
+  startup health checks. Performs the MCP handshake now if it hasn't happened yet
+  and raises `HyperpingRateLimitError` if the server's `initialize` cap is hit.
+- New "MCP rate limits and connection lifecycle" section in README documenting
+  Hyperping's stateless MCP server, the undocumented `initialize` cap, and the
+  recommended client lifetime per process.
+
+### Fixed
+
+- MCP rate-limit errors that the server returns as HTTP 200 with JSON-RPC
+  `error.code = -32000` (notably the `initialize` per-minute cap) are now
+  classified as `HyperpingRateLimitError` with `retry_after` parsed from the
+  message, instead of a generic `HyperpingAPIError`. Existing HTTP 429 handling is
+  unchanged.
+- After a rate-limit on `initialize`, the MCP transport latches a cool-off so
+  subsequent `call_tool` invocations short-circuit with `HyperpingRateLimitError`
+  until the advertised `retry_after` elapses, instead of issuing further HTTP
+  requests that would burn more slots from the bucket.
+- TOCTOU race in lazy `initialize` where two concurrent first calls on the same
+  `HyperpingMcpClient` could each POST `initialize`. The handshake is now
+  performed under a dedicated lock with a double-checked flag.
+
 ## [1.6.0] - 2026-05-06
 
 ### Added
