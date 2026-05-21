@@ -36,3 +36,4 @@ htmlcov/
 # Local dev tooling
 .claude/
 dist/
+.worktrees/

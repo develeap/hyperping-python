@@ -50,12 +50,25 @@ class HyperpingNotFoundError(HyperpingAPIError):
 
 
 class HyperpingRateLimitError(HyperpingAPIError):
-    """Raised when the API rate limit is exceeded (HTTP 429).
+    """Raised when an API rate limit is exceeded.
+
+    The REST API and the MCP server both signal rate-limit using this
+    exception. The signal can arrive two ways:
+
+    - HTTP 429 with a standard ``Retry-After`` header (REST and MCP).
+    - HTTP 200 with a JSON-RPC ``-32000`` error whose message contains the
+      string ``"rate limit exceeded"`` and (optionally) ``"Retry after Ns"``
+      (MCP ``initialize``-bucket signal).
+
+    ``status_code`` reflects whichever signal was used (429 or 200). When the
+    MCP cool-off latch short-circuits a subsequent ``initialize`` attempt,
+    ``status_code`` is the status of the original rate-limit response.
 
     Args:
         message: Human-readable error description.
-        retry_after: Seconds to wait before retrying, from the ``Retry-After``
-            response header. ``None`` if the header was absent.
+        retry_after: Seconds to wait before retrying, parsed from the
+            ``Retry-After`` header or the JSON-RPC message body. ``None`` if
+            no value was advertised.
         **kwargs: Forwarded to :class:`HyperpingAPIError`.
     """
 

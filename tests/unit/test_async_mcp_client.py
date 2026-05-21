@@ -2,9 +2,13 @@
 
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
+import respx
 
 from hyperping._async_mcp_client import AsyncHyperpingMcpClient
+from hyperping._async_mcp_transport import MCP_URL
+from hyperping.exceptions import HyperpingRateLimitError
 from hyperping.models._integration_models import Integration
 from hyperping.models._monitor_models import Monitor
 from hyperping.models._observability_models import MonitorAnomaly, ProbeLogResponse
@@ -282,3 +286,45 @@ async def test_get_integration():
     result = await client.get_integration("int1")
     assert isinstance(result, Integration)
     client._transport.call_tool.assert_called_once_with("get_integration", {"uuid": "int1"})
+
+
+# -- ensure_initialized() (Task 9 / Test 16) ---------------------------------
+
+
+@pytest.mark.asyncio
+async def test_ensure_initialized_delegates_to_transport():
+    client = make_client()
+    await client.ensure_initialized()
+    client._transport.initialize.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_ensure_initialized_propagates_rate_limit():
+    client = make_client()
+    client._transport.initialize.side_effect = HyperpingRateLimitError(
+        "rate limited on initialize", retry_after=30, status_code=200,
+    )
+    with pytest.raises(HyperpingRateLimitError) as exc_info:
+        await client.ensure_initialized()
+    assert exc_info.value.retry_after == 30
+    assert exc_info.value.status_code == 200
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_ensure_initialized_real_transport_is_idempotent():
+    """Calling ensure_initialized twice through the real async transport POSTs only once."""
+    route = respx.post(MCP_URL).mock(
+        side_effect=[
+            httpx.Response(
+                200,
+                json={"jsonrpc": "2.0", "id": 1, "result": {"protocolVersion": "2025-03-26"}},
+            ),
+            httpx.Response(202),
+        ],
+    )
+    client = AsyncHyperpingMcpClient(api_key="sk_test", base_url=MCP_URL)
+    await client.ensure_initialized()
+    await client.ensure_initialized()
+    assert route.call_count == 2
+    await client.close()

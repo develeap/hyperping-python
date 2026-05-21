@@ -63,6 +63,27 @@ class AsyncHyperpingMcpClient:
         """Call an MCP tool via the transport."""
         return await self._transport.call_tool(tool, args or {})
 
+    async def ensure_initialized(self) -> None:
+        """Perform the MCP handshake now if it hasn't happened yet.
+
+        Async counterpart to
+        :meth:`hyperping.mcp_client.HyperpingMcpClient.ensure_initialized`.
+        Idempotent.
+
+        Raises:
+            HyperpingRateLimitError: If the server rate-limits ``initialize``,
+                either via HTTP 429 or via the JSON-RPC ``-32000`` rate-limit
+                payload. Inspect ``.retry_after`` to back off.
+            HyperpingAuthError: If the API key is invalid (HTTP 401/403).
+            HyperpingNotFoundError: If the MCP endpoint URL is wrong
+                (HTTP 404).
+            HyperpingValidationError: If the server rejects the handshake
+                payload (HTTP 400/422; unusual on initialize).
+            HyperpingAPIError: Any other transport-level error (HTTP 5xx,
+                malformed body, etc.).
+        """
+        await self._transport.initialize()
+
     # ==================== Context Manager ====================
 
     async def close(self) -> None:

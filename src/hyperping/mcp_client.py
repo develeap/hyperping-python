@@ -62,6 +62,29 @@ class HyperpingMcpClient:
         """Call an MCP tool via the transport."""
         return self._transport.call_tool(tool, args or {})
 
+    def ensure_initialized(self) -> None:
+        """Perform the MCP handshake now if it hasn't happened yet.
+
+        Useful for startup health checks: call this once on boot and catch
+        :class:`HyperpingRateLimitError` so you can decide whether to start
+        the rest of your service. Subsequent tool calls reuse the handshake.
+
+        Idempotent: calling it more than once is a no-op after success.
+
+        Raises:
+            HyperpingRateLimitError: If the server rate-limits ``initialize``,
+                either via HTTP 429 or via the JSON-RPC ``-32000`` rate-limit
+                payload. Inspect ``.retry_after`` to back off.
+            HyperpingAuthError: If the API key is invalid (HTTP 401/403).
+            HyperpingNotFoundError: If the MCP endpoint URL is wrong
+                (HTTP 404).
+            HyperpingValidationError: If the server rejects the handshake
+                payload (HTTP 400/422; unusual on initialize).
+            HyperpingAPIError: Any other transport-level error (HTTP 5xx,
+                malformed body, etc.).
+        """
+        self._transport.initialize()
+
     # ==================== Context Manager ====================
 
     def close(self) -> None:
