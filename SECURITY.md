@@ -6,8 +6,9 @@ We release patches for security vulnerabilities for the following versions:
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.5.x   | :white_check_mark: |
-| < 1.5   | :x:                |
+| 1.7.x   | :white_check_mark: |
+| 1.6.x   | :white_check_mark: |
+| < 1.6   | :x:                |
 
 Older releases may receive a fix at maintainers' discretion when the issue is severe and an upgrade is not feasible. The latest 1.x release is always the recommended target.
 

@@ -321,20 +321,27 @@ def test_readme_contains_mcp_rate_limits_section():
     )
 
 
-def test_changelog_contains_unreleased_entry():
-    """CHANGELOG must contain an [Unreleased] block with Added and Fixed."""
+def test_changelog_top_section_documents_mcp_rate_limit_work():
+    """CHANGELOG's most recent section (either [Unreleased] or a released
+    version) must document the MCP rate-limit work shipped in this change.
+    """
     import re
 
     changelog = (_repo_root() / "CHANGELOG.md").read_text(encoding="utf-8")
-    assert re.search(r"^## \[Unreleased\]\s*$", changelog, re.MULTILINE), (
-        "CHANGELOG is missing an '## [Unreleased]' top-level heading"
-    )
-    # Slice the Unreleased section: from its heading up to the next ## release.
+    # Match the first ## heading (Unreleased or a released version) and slice
+    # up to the next ## heading.
     match = re.search(
-        r"^## \[Unreleased\]\s*\n(.*?)(?=^## \[)",
+        r"^## \[(?:Unreleased|\d+\.\d+\.\d+)\][^\n]*\n(.*?)(?=^## \[)",
         changelog,
         re.MULTILINE | re.DOTALL,
     )
-    section = match.group(1) if match else changelog.split("## [Unreleased]", 1)[-1]
-    assert "### Added" in section, "Unreleased section is missing '### Added'"
-    assert "### Fixed" in section, "Unreleased section is missing '### Fixed'"
+    assert match, "CHANGELOG is missing a top '## [Unreleased]' or '## [X.Y.Z]' heading"
+    section = match.group(1)
+    assert "### Added" in section, "Top CHANGELOG section is missing '### Added'"
+    assert "### Fixed" in section, "Top CHANGELOG section is missing '### Fixed'"
+    assert "ensure_initialized" in section, (
+        "Top CHANGELOG section must mention ensure_initialized()"
+    )
+    assert "rate limit" in section.lower(), (
+        "Top CHANGELOG section must mention rate-limit handling"
+    )
