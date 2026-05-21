@@ -323,26 +323,18 @@ def test_readme_contains_mcp_rate_limits_section():
 
 def test_changelog_contains_unreleased_entry():
     """CHANGELOG must contain an [Unreleased] block with Added and Fixed."""
+    import re
+
     changelog = (_repo_root() / "CHANGELOG.md").read_text(encoding="utf-8")
-    assert "\n## [Unreleased]\n" in changelog or changelog.startswith(
-        "## [Unreleased]\n"
-    ) or "## [Unreleased]" in changelog.splitlines(), (
+    assert re.search(r"^## \[Unreleased\]\s*$", changelog, re.MULTILINE), (
         "CHANGELOG is missing an '## [Unreleased]' top-level heading"
     )
-    # Locate the Unreleased section and confirm subheadings appear within it
-    # (before the next ## release heading).
-    lines = changelog.splitlines()
-    start = None
-    for i, line in enumerate(lines):
-        if line.strip() == "## [Unreleased]":
-            start = i
-            break
-    assert start is not None, "CHANGELOG does not contain '## [Unreleased]'"
-    end = len(lines)
-    for j in range(start + 1, len(lines)):
-        if lines[j].startswith("## [") and lines[j].strip() != "## [Unreleased]":
-            end = j
-            break
-    section = "\n".join(lines[start:end])
+    # Slice the Unreleased section: from its heading up to the next ## release.
+    match = re.search(
+        r"^## \[Unreleased\]\s*\n(.*?)(?=^## \[)",
+        changelog,
+        re.MULTILINE | re.DOTALL,
+    )
+    section = match.group(1) if match else changelog.split("## [Unreleased]", 1)[-1]
     assert "### Added" in section, "Unreleased section is missing '### Added'"
     assert "### Fixed" in section, "Unreleased section is missing '### Fixed'"

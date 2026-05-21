@@ -489,6 +489,14 @@ def test_concurrent_first_call_single_initialize():
     assert errors == [], f"unexpected errors from threads: {errors!r}"
     # Expected: exactly 4 POSTs total -- one initialize, one notification, two tool calls.
     assert init_route.call_count == 4
+    # Inspect bodies to ensure exactly ONE was the initialize handshake. A
+    # regression that fired two "initialize" POSTs and skipped the notification
+    # would still total 4, so the count alone is not sufficient evidence that
+    # the TOCTOU race is closed.
+    methods = [json.loads(call.request.content)["method"] for call in init_route.calls]
+    assert methods.count("initialize") == 1, methods
+    assert methods.count("notifications/initialized") == 1, methods
+    assert methods.count("tools/call") == 2, methods
     assert results == [{"ok": True}, {"ok": True}]
     transport.close()
 
@@ -507,8 +515,15 @@ def test_initialize_is_idempotent():
     )
     transport = McpTransport(api_key="sk_test", base_url=MCP_URL)
     transport.initialize()
-    transport.initialize()  # second call must be a no-op
-    assert route.call_count == 2  # initialize + notification, not 4
+    count_after_first = route.call_count
+    assert count_after_first == 2  # initialize + notification
+    transport.initialize()  # second call must be a pure no-op
+    assert route.call_count == count_after_first, (
+        "second initialize() must not issue any HTTP request"
+    )
+    # And the request methods are exactly what we expect, in order.
+    methods = [json.loads(call.request.content)["method"] for call in route.calls]
+    assert methods == ["initialize", "notifications/initialized"]
     transport.close()
 
 
@@ -581,7 +596,7 @@ def test_initialize_cooloff_clears_after_deadline(monkeypatch):
         },
     )
 
-    respx.post(MCP_URL).mock(
+    route = respx.post(MCP_URL).mock(
         side_effect=[
             httpx.Response(200, json=rl_body),  # first initialize: rate-limited
             ok_init,  # second initialize: success
@@ -593,15 +608,20 @@ def test_initialize_cooloff_clears_after_deadline(monkeypatch):
     transport = McpTransport(api_key="sk_test", base_url=MCP_URL)
     with pytest.raises(HyperpingRateLimitError):
         transport.call_tool("some_tool")
+    assert route.call_count == 1, "first call_tool must POST initialize exactly once"
 
-    # Still latched.
+    # Still latched: zero further HTTP traffic until the cool-off elapses.
     with pytest.raises(HyperpingRateLimitError):
         transport.call_tool("some_tool")
+    assert route.call_count == 1, "latched call_tool must not POST"
 
-    # Advance past the deadline.
+    # Advance past the deadline. Now initialize + notification + tool call fire.
     fake_now["t"] += 100.0
     result = transport.call_tool("some_tool")
     assert result == {"ok": True}
+    assert route.call_count == 4, (
+        "post-deadline call_tool must POST initialize + notification + tool"
+    )
     transport.close()
 
 
@@ -681,3 +701,259 @@ def test_six_fresh_clients_under_jsonrpc_rate_limit_all_fail_typed():
     for exc in captured:
         assert exc.retry_after == 32
         assert exc.status_code == 200
+
+
+# -- Retry-After parser robustness (MAJOR-7) ---------------------------------
+
+
+@pytest.mark.parametrize(
+    "message, expected",
+    [
+        ('Hyperping MCP rate limit exceeded. Retry after 32s.', 32),
+        ('Rate limit exceeded for "initialize". Retry-After: 30s', 30),
+        ('Rate limit exceeded. retry after 30 seconds.', 30),
+        ('Rate limit exceeded. RETRY AFTER 7', 7),
+        ('Rate limit exceeded. Retry after 0s', 0),
+        ('Rate limit exceeded. Retry after 1.5s', 1),  # sub-second floored
+        ('Rate limit exceeded.', None),  # no advertised value
+        ('Rate limit exceeded. Try again later.', None),  # graceful
+    ],
+)
+@respx.mock
+def test_jsonrpc_rate_limit_retry_after_parser_variants(message, expected):
+    respx.post(MCP_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "error": {"code": -32000, "message": message},
+            },
+        )
+    )
+    transport = McpTransport(api_key="sk_test", base_url=MCP_URL)
+    transport._initialized = True
+    with pytest.raises(HyperpingRateLimitError) as exc_info:
+        transport.call_tool("some_tool")
+    assert exc_info.value.retry_after == expected
+    transport.close()
+
+
+# -- Marker tightness: "rate limit" without "exceeded" is NOT a rate-limit ---
+
+
+@respx.mock
+def test_jsonrpc_rate_limit_marker_requires_exceeded():
+    """A -32000 mentioning 'rate limit' but not 'exceeded' stays generic."""
+    respx.post(MCP_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "error": {
+                    "code": -32000,
+                    "message": "Bad rate limit configuration in monitor",
+                },
+            },
+        )
+    )
+    transport = McpTransport(api_key="sk_test", base_url=MCP_URL)
+    transport._initialized = True
+    with pytest.raises(HyperpingAPIError) as exc_info:
+        transport.call_tool("some_tool")
+    assert not isinstance(exc_info.value, HyperpingRateLimitError)
+    transport.close()
+
+
+# -- Notification leg rate-limit classified (MAJOR-1) ------------------------
+
+
+@respx.mock
+def test_notifications_initialized_rate_limit_classified(monkeypatch):
+    """A 200 + -32000 on notifications/initialized raises HyperpingRateLimitError."""
+    monkeypatch.setattr(
+        "hyperping._mcp_transport.time.monotonic", lambda: 1000.0
+    )
+    respx.post(MCP_URL).mock(
+        side_effect=[
+            # initialize succeeds
+            httpx.Response(
+                200,
+                json={"jsonrpc": "2.0", "id": 1, "result": {"protocolVersion": "2025-03-26"}},
+            ),
+            # notification gets rate-limited via JSON-RPC error
+            httpx.Response(
+                200,
+                json={
+                    "jsonrpc": "2.0",
+                    "error": {
+                        "code": -32000,
+                        "message": "Hyperping MCP rate limit exceeded. Retry after 5s.",
+                    },
+                },
+            ),
+        ]
+    )
+    transport = McpTransport(api_key="sk_test", base_url=MCP_URL)
+    with pytest.raises(HyperpingRateLimitError) as exc_info:
+        transport.call_tool("some_tool")
+    assert exc_info.value.retry_after == 5
+    assert exc_info.value.status_code == 200
+    # The latch must be armed by the second-leg failure, so the next
+    # call_tool short-circuits without HTTP traffic.
+    assert transport._init_blocked_until > 0
+    transport.close()
+
+
+# -- Cool-off preserves originating status_code (MAJOR-2) --------------------
+
+
+@respx.mock
+def test_cooloff_short_circuit_preserves_429_status_code(monkeypatch):
+    """A latch armed by HTTP 429 must short-circuit with status_code=429."""
+    fake_now = {"t": 1000.0}
+    monkeypatch.setattr(
+        "hyperping._mcp_transport.time.monotonic", lambda: fake_now["t"]
+    )
+    respx.post(MCP_URL).mock(
+        return_value=httpx.Response(
+            429,
+            text="Too many initializes",
+            headers={"retry-after": "30"},
+        ),
+    )
+    transport = McpTransport(api_key="sk_test", base_url=MCP_URL)
+    with pytest.raises(HyperpingRateLimitError) as e1:
+        transport.call_tool("some_tool")
+    assert e1.value.status_code == 429
+    # Second call within the window: short-circuit must preserve status_code=429.
+    with pytest.raises(HyperpingRateLimitError) as e2:
+        transport.call_tool("some_tool")
+    assert e2.value.status_code == 429
+    transport.close()
+
+
+@respx.mock
+def test_cooloff_short_circuit_preserves_200_status_code(monkeypatch):
+    """A latch armed by JSON-RPC -32000 short-circuits with status_code=200."""
+    fake_now = {"t": 1000.0}
+    monkeypatch.setattr(
+        "hyperping._mcp_transport.time.monotonic", lambda: fake_now["t"]
+    )
+    respx.post(MCP_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "error": {
+                    "code": -32000,
+                    "message": "Hyperping MCP rate limit exceeded. Retry after 30s.",
+                },
+            },
+        )
+    )
+    transport = McpTransport(api_key="sk_test", base_url=MCP_URL)
+    with pytest.raises(HyperpingRateLimitError) as e1:
+        transport.call_tool("some_tool")
+    assert e1.value.status_code == 200
+    with pytest.raises(HyperpingRateLimitError) as e2:
+        transport.call_tool("some_tool")
+    assert e2.value.status_code == 200
+    transport.close()
+
+
+# -- math.ceil semantics on cool-off short-circuit (MAJOR-3) -----------------
+
+
+@respx.mock
+def test_cooloff_short_circuit_uses_math_ceil_not_plus_one(monkeypatch):
+    """When server advertises Retry-After: 30, short-circuit returns 30, not 31."""
+    fake_now = {"t": 1000.0}
+    monkeypatch.setattr(
+        "hyperping._mcp_transport.time.monotonic", lambda: fake_now["t"]
+    )
+    respx.post(MCP_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "error": {
+                    "code": -32000,
+                    "message": "Hyperping MCP rate limit exceeded. Retry after 30s.",
+                },
+            },
+        )
+    )
+    transport = McpTransport(api_key="sk_test", base_url=MCP_URL)
+    with pytest.raises(HyperpingRateLimitError):
+        transport.call_tool("some_tool")  # arms latch with wait=30
+    # Same monotonic moment: remaining is exactly 30.0 -> ceil(30.0) == 30.
+    with pytest.raises(HyperpingRateLimitError) as exc_info:
+        transport.call_tool("some_tool")
+    assert exc_info.value.retry_after == 30, (
+        f"expected exactly 30 (math.ceil), got {exc_info.value.retry_after}"
+    )
+    # Advance a fractional amount: remaining = 29.4 -> ceil = 30.
+    fake_now["t"] += 0.6
+    with pytest.raises(HyperpingRateLimitError) as exc_info:
+        transport.call_tool("some_tool")
+    assert exc_info.value.retry_after == 30
+    # Advance to within 1s of the deadline: remaining = 0.4 -> ceil = 1.
+    fake_now["t"] += 29.0
+    with pytest.raises(HyperpingRateLimitError) as exc_info:
+        transport.call_tool("some_tool")
+    assert exc_info.value.retry_after == 1
+    transport.close()
+
+
+# -- retry_after=0 means "no latch" (MINOR-2) --------------------------------
+
+
+@respx.mock
+def test_jsonrpc_rate_limit_with_retry_after_zero_does_not_latch(monkeypatch):
+    """retry_after=0 from server means retry-now; do not set a 30s default."""
+    fake_now = {"t": 1000.0}
+    monkeypatch.setattr(
+        "hyperping._mcp_transport.time.monotonic", lambda: fake_now["t"]
+    )
+    ok_init = httpx.Response(
+        200,
+        json={"jsonrpc": "2.0", "id": 1, "result": {"protocolVersion": "2025-03-26"}},
+    )
+    ok_tool = httpx.Response(
+        200,
+        json={
+            "jsonrpc": "2.0",
+            "id": 2,
+            "result": {"content": [{"type": "text", "text": json.dumps({"ok": True})}]},
+        },
+    )
+    respx.post(MCP_URL).mock(
+        side_effect=[
+            httpx.Response(
+                200,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "error": {
+                        "code": -32000,
+                        "message": "Hyperping MCP rate limit exceeded. Retry after 0s.",
+                    },
+                },
+            ),
+            ok_init,
+            httpx.Response(202),
+            ok_tool,
+        ]
+    )
+    transport = McpTransport(api_key="sk_test", base_url=MCP_URL)
+    with pytest.raises(HyperpingRateLimitError):
+        transport.call_tool("some_tool")
+    # Latch deadline equals "now" so the next call is permitted immediately.
+    assert transport._init_blocked_until <= fake_now["t"]
+    result = transport.call_tool("some_tool")
+    assert result == {"ok": True}
+    transport.close()

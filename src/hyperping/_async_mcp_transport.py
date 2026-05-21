@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import re
 import time
 from typing import Any
@@ -23,8 +24,18 @@ from hyperping.exceptions import (
 
 _PROTOCOL_VERSION = "2025-03-26"
 
-_MCP_RATE_LIMIT_MARKER = "rate limit"
-_MCP_RATE_LIMIT_RETRY_AFTER_RE = re.compile(r"[Rr]etry after\s+(\d+)\s*s")
+# Tight marker: the server's observed phrasing is "rate limit exceeded ...".
+# Bare "rate limit" would risk classifying messages like "rate limit
+# configuration invalid" as a rate-limit error.
+_MCP_RATE_LIMIT_MARKER = "rate limit exceeded"
+# Accept "Retry after Ns", "Retry-After: Ns", "retry after 30 seconds", etc.
+# Captures only the integer; sub-second values are floored.
+_MCP_RATE_LIMIT_RETRY_AFTER_RE = re.compile(
+    r"retry[\s\-]after[:\s]+(\d+)",
+    re.IGNORECASE,
+)
+# Default cool-off when the server fails to advertise one.
+_COOLOFF_DEFAULT_SECONDS = 30
 
 
 class AsyncMcpTransport:
@@ -56,8 +67,15 @@ class AsyncMcpTransport:
         self._initialized = False
         self._request_id = 0
         self._lock = asyncio.Lock()
+        # Separate lock for the handshake so request-id increment and the
+        # initialize() critical section don't contend.
         self._init_lock = asyncio.Lock()
+        # Monotonic deadline (process-local). 0.0 means no latch.
         self._init_blocked_until: float = 0.0
+        # Status code of the original rate-limit response that armed the
+        # latch, propagated through short-circuit raises so callers can tell
+        # whether they hit HTTP 429 or HTTP 200 + JSON-RPC -32000.
+        self._init_blocked_status_code: int = 200
         self._init_result: dict[str, Any] = {}
         self._max_retries = max_retries
 
@@ -102,6 +120,7 @@ class AsyncMcpTransport:
                 "Rate limit exceeded",
                 retry_after=retry_after,
                 status_code=429,
+                response_body={"raw": resp.text[:500]},
             )
         if resp.status_code in (400, 422):
             raise HyperpingValidationError(
@@ -114,37 +133,54 @@ class AsyncMcpTransport:
                 status_code=resp.status_code,
                 response_body={"raw": resp.text[:500]},
             )
+
+        # HTTP 200. Parse the body so we classify JSON-RPC errors (including
+        # rate-limit signals) on notification responses too -- the server can
+        # return 200 + JSON-RPC error on a "notifications/initialized" leg.
+        try:
+            data = resp.json()
+        except (json.JSONDecodeError, ValueError):
+            if is_notification:
+                return None
+            raise HyperpingAPIError(
+                "MCP server returned 200 with non-JSON body",
+                status_code=200,
+                response_body={"raw": resp.text[:500]},
+            ) from None
+
+        if isinstance(data, dict) and "error" in data:
+            self._raise_for_jsonrpc_error(data["error"], resp.status_code)
+
         if is_notification:
             return None
-
-        data = resp.json()
-        if "error" in data:
-            err = data["error"]
-            if (
-                isinstance(err, dict)
-                and err.get("code") == -32000
-                and isinstance(err.get("message"), str)
-                and _MCP_RATE_LIMIT_MARKER in err["message"].lower()
-            ):
-                rl_retry_after: int | None = None
-                match = _MCP_RATE_LIMIT_RETRY_AFTER_RE.search(err["message"])
-                if match:
-                    try:
-                        rl_retry_after = int(match.group(1))
-                    except ValueError:  # defensive; regex guarantees digits
-                        rl_retry_after = None
-                raise HyperpingRateLimitError(
-                    err["message"],
-                    retry_after=rl_retry_after,
-                    status_code=resp.status_code,
-                    response_body=err,
-                )
-            raise HyperpingAPIError(
-                f"MCP error {err.get('code', '?')}: {err.get('message', 'unknown')}",
-                status_code=resp.status_code,
-                response_body=err,
-            )
         return data  # type: ignore[no-any-return]
+
+    @staticmethod
+    def _raise_for_jsonrpc_error(err: Any, status_code: int) -> None:
+        """Map a JSON-RPC ``error`` payload to a typed exception and raise it."""
+        if (
+            isinstance(err, dict)
+            and err.get("code") == -32000
+            and isinstance(err.get("message"), str)
+            and _MCP_RATE_LIMIT_MARKER in err["message"].lower()
+        ):
+            rl_retry_after: int | None = None
+            match = _MCP_RATE_LIMIT_RETRY_AFTER_RE.search(err["message"])
+            if match:
+                rl_retry_after = int(match.group(1))
+            raise HyperpingRateLimitError(
+                err["message"],
+                retry_after=rl_retry_after,
+                status_code=status_code,
+                response_body=err if isinstance(err, dict) else None,
+            )
+        code = err.get("code", "?") if isinstance(err, dict) else "?"
+        message = err.get("message", "unknown") if isinstance(err, dict) else str(err)
+        raise HyperpingAPIError(
+            f"MCP error {code}: {message}",
+            status_code=status_code,
+            response_body=err if isinstance(err, dict) else None,
+        )
 
     async def initialize(self) -> dict[str, Any]:
         """Async idempotent and concurrency-safe MCP handshake.
@@ -153,7 +189,16 @@ class AsyncMcpTransport:
         first successful handshake. While an ``initialize`` cool-off latch is
         active, raises :class:`HyperpingRateLimitError` without issuing any
         HTTP request.
+
+        The cool-off latch is per-transport-instance and per-process. It does
+        not coordinate across separate Python processes sharing the same API
+        key; each process keeps its own latch.
         """
+        # Fast path: avoid lock acquisition on every call after the handshake
+        # has succeeded. ``_initialized`` is only assigned True under the lock
+        # after both legs of the handshake, so a True read here is safe.
+        if self._initialized:
+            return self._init_result
         async with self._init_lock:
             if self._initialized:
                 return self._init_result
@@ -161,12 +206,14 @@ class AsyncMcpTransport:
 
     async def _initialize_locked(self) -> dict[str, Any]:
         """Perform the handshake. Assumes ``self._init_lock`` is held."""
+        # ``time.monotonic`` is used deliberately over ``time.time`` so the
+        # latch is immune to wall-clock jumps (NTP adjustments, suspend/resume).
         remaining = self._init_blocked_until - time.monotonic()
         if remaining > 0:
             raise HyperpingRateLimitError(
                 "MCP initialize rate limit cool-off active; retry later",
-                retry_after=int(remaining) + 1,
-                status_code=200,
+                retry_after=max(math.ceil(remaining), 1),
+                status_code=self._init_blocked_status_code,
             )
         try:
             result = await self._send_rpc(
@@ -179,12 +226,21 @@ class AsyncMcpTransport:
             )
             await self._send_rpc("notifications/initialized", is_notification=True)
         except HyperpingRateLimitError as exc:
-            wait = exc.retry_after if exc.retry_after and exc.retry_after > 0 else 30
+            # retry_after=None -> default cool-off; retry_after=0 -> no latch
+            # (the server is telling us we may retry immediately); positive
+            # values are honoured verbatim.
+            if exc.retry_after is None:
+                wait = _COOLOFF_DEFAULT_SECONDS
+            else:
+                wait = max(int(exc.retry_after), 0)
             self._init_blocked_until = time.monotonic() + wait
+            self._init_blocked_status_code = exc.status_code or 200
             raise
         self._init_result = result.get("result", {}) if result else {}
-        self._initialized = True
         self._init_blocked_until = 0.0
+        # Set last so the fast path in initialize() never returns a stale
+        # ``_init_result``.
+        self._initialized = True
         return self._init_result
 
     async def call_tool(

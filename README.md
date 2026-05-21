@@ -195,13 +195,16 @@ plain dicts/lists; use the exported Pydantic models (e.g., `OnCallSchedule`,
 
 ### MCP rate limits and connection lifecycle
 
-The Hyperping MCP server (`https://api.hyperping.io/v1/mcp`) is stateless over HTTP
+The Hyperping MCP server (`https://api.hyperping.io/v1/mcp`) is
+[documented by Hyperping as stateless over HTTP](https://hyperping.com/mcp)
 and rate-limits per API key. The publicly documented limit is 300 requests per
-minute shared with the REST API, but the server also enforces a separate, low cap
-on the `initialize` handshake (observed around 5/minute). Because every new
-`HyperpingMcpClient` instance must perform the MCP `initialize` handshake on its
-first call, instantiating the client in a hot path or running several short-lived
-processes against one key will trip this cap.
+minute shared with the REST API
+([rate-limit docs](https://hyperping.com/docs/monitoring/api-rate-limits)), but
+the server also enforces a separate, undocumented cap on the `initialize`
+handshake (observed around 5/minute). Because every new `HyperpingMcpClient`
+instance must perform the MCP `initialize` handshake on its first call,
+instantiating the client in a hot path or running several short-lived processes
+against one key will trip this cap.
 
 Operational guidance:
 
@@ -212,7 +215,9 @@ Operational guidance:
   arrive two ways: as HTTP 429 (with a standard `Retry-After` header) and as a
   JSON-RPC server error (`code: -32000`, HTTP 200) on `initialize`. Both surface as
   `HyperpingRateLimitError` with `retry_after` parsed from whichever signal was
-  used. The `status_code` attribute is `429` or `200` respectively.
+  used. The `status_code` attribute is `429` or `200`, matching the underlying
+  signal; cool-off short-circuits preserve the originating status code so callers
+  can disambiguate the two buckets.
 - **Use `ensure_initialized()` for startup health checks.** Calling it once on
   service boot lets you fail fast if the key is already at the `initialize` cap,
   instead of failing on the first business call.
@@ -223,7 +228,10 @@ Operational guidance:
 - **After a rate-limit on `initialize`, the SDK latches a cool-off** so that
   subsequent `call_tool` invocations on the same client fail fast with
   `HyperpingRateLimitError` (no extra HTTP traffic) until `retry_after` elapses.
-  This prevents accidentally burning more slots from the bucket.
+  This prevents accidentally burning more slots from the bucket. The latch is
+  per-`HyperpingMcpClient` instance and per-process; it does not coordinate
+  across separate Python processes sharing the same API key, so multi-process
+  setups still need the workload-separation advice above.
 
 ```python
 from hyperping import HyperpingMcpClient, HyperpingRateLimitError

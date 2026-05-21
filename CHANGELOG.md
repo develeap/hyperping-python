@@ -29,7 +29,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   requests that would burn more slots from the bucket.
 - TOCTOU race in lazy `initialize` where two concurrent first calls on the same
   `HyperpingMcpClient` could each POST `initialize`. The handshake is now
-  performed under a dedicated lock with a double-checked flag.
+  performed under a dedicated lock with a double-checked flag, including a
+  lockless fast path so post-handshake `call_tool` does not contend on it.
+- Cool-off short-circuit now preserves the originating status code (200 for
+  JSON-RPC `-32000`, 429 for HTTP 429) so callers can distinguish buckets, and
+  `retry_after` uses `math.ceil` to avoid over-reporting by one second.
+- JSON-RPC rate-limit signals returned on the `notifications/initialized` leg
+  are now classified as `HyperpingRateLimitError` (previously they were
+  silently treated as a successful notification).
+- Rate-limit detection requires the message to contain `"rate limit exceeded"`
+  (the observed phrasing) to avoid false positives on unrelated server messages
+  that happen to mention `"rate limit"`. The `Retry-After` parser now also
+  accepts `Retry-After:` and `retry after N seconds` variants.
 
 ## [1.6.0] - 2026-05-06
 
