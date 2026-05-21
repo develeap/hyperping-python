@@ -36,6 +36,15 @@ jobs:
       - name: Test
         run: uv run pytest --cov=hyperping --cov-report=term-missing
 
-      - name: Audit dependencies
-        continue-on-error: true
-        run: uv run pip-audit
+      - name: Audit runtime dependencies
+        # Audit the runtime dependency closure (what users actually install
+        # via `pip install hyperping`), not the full venv. The venv contains
+        # build/dev tooling such as `pip` itself and pip-audit's own
+        # transitives (requests, urllib3) which are not shipped in the
+        # wheel; auditing the env conflates "vulnerabilities in our package"
+        # with "vulnerabilities in CI tooling" and produces noise for CVEs
+        # that don't reach users. Mirrors the pattern in publish.yml (#24).
+        run: |
+          uv export --no-dev --no-emit-project --no-hashes \
+            --format requirements.txt -o /tmp/runtime-requirements.txt
+          uv run pip-audit -r /tmp/runtime-requirements.txt
