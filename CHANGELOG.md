@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [1.8.0] - 2026-05-31
+
+This is a security-focused release. It closes several credential-leak and validation gaps surfaced by an independent audit. One change is breaking for local-development workflows; see Upgrade Notes below.
+
+### Security
+
+- `validate_base_url` is now applied at every constructor that accepts a `base_url` or `mcp_url`: both the sync and async REST clients, both MCP transports, and the high-level MCP clients. The validator rejects non-`https` URLs by default, rejects URLs that carry userinfo (`user:pass@host` or bare `user@host`), and rejects URLs with a query string or fragment. The `Authorization: Bearer` header therefore cannot reach an attacker-controlled host through a misconfigured base URL.
+- `HyperpingAPIError.response_body` is now recursively redacted at construction time. Sensitive keys (authorization, tokens, cookies, set-cookie, request headers, request body, emails, webhooks) are replaced with `[REDACTED]`. Free-form string values are scrubbed for `Bearer <token>` and `sk_<token>` shapes. The recursion is bounded to prevent `RecursionError` from pathological payloads. Applies to all subclasses, including `HyperpingRateLimitError`.
+- `HyperpingAPIError` formatted messages now strip C0 control bytes (preserving `\t` and `\n`) and cap at 256 characters, so a server-supplied error string carrying ANSI escapes or a 1 KB blob cannot poison terminal output or downstream log pipelines.
+- The MCP transport no longer captures the first 500 bytes of server response as `response_body["raw"]` on rate-limit (429), generic HTTP error, or JSON-parse failure paths. Subscriber emails or webhook URLs that the server may echo cannot leak through that channel.
+- `_utils.parse_list` no longer logs the full `pydantic.ValidationError` string on per-item parse failures (Pydantic v2 includes the offending input by default). It now logs only the exception class and field locations.
+- The `breaker_key_fn` callback is now used through an LRU-bounded map. A custom callback that returns unbounded unique strings can no longer leak memory in long-running processes: the per-endpoint breaker map is capped at 1024 entries and evicts oldest on overflow. Applies to both sync and async clients.
+
+### Added
+
+- `allow_insecure: bool = False` keyword argument on every constructor that accepts a `base_url` or `mcp_url`. When set to `True`, `http://` URLs are permitted and an `InsecureTransportWarning` is emitted. Provided for local-development workflows; not recommended for production.
+- `InsecureTransportWarning` warning class exported from `hyperping`.
+
+### Changed
+
+- `_parse_retry_after` documents that it intentionally supports only the delta-seconds form of the `Retry-After` header. HTTP-date values fall through to exponential backoff rather than raising. Trade-off is documented in the docstring; no behavioral change for callers passing the integer form.
+
+### Upgrade Notes
+
+If your code instantiates `HyperpingClient` (or any MCP client) against a `http://localhost` URL for local development or against a mock server, the constructor will now raise `ValueError`. Pass `allow_insecure=True` to opt in, and expect an `InsecureTransportWarning` at runtime:
+
+```python
+from hyperping import HyperpingClient
+
+client = HyperpingClient(
+    api_key="sk_test_xxx",
+    base_url="http://localhost:8000",
+    allow_insecure=True,
+)
+```
+
+Production callers using `https://api.hyperping.io` are unaffected.
+
+URLs that previously carried embedded credentials (`https://user:pass@api.example.com`) or a trailing query string / fragment will now also raise at construction time. Refactor to pass credentials through `api_key` and to keep query strings out of the base URL.
+
 ## [1.7.0] - 2026-05-21
 
 ### Added
