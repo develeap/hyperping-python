@@ -77,6 +77,59 @@ def test_rate_limit_error_does_not_expose_raw_mcp_body() -> None:
     assert "sk_secret_rl" not in repr(err.response_body)
 
 
+def test_redactor_bounds_recursion_depth() -> None:
+    """A pathologically deep payload must not blow the recursion limit.
+
+    A malicious / malformed server could return JSON with thousands of
+    nested levels; the redactor used to recurse without a cap, which raised
+    ``RecursionError`` inside ``HyperpingAPIError.__init__`` and masked the
+    real HTTP failure. With a depth cap the call returns cleanly and the
+    over-deep subtree is replaced with a sentinel marker.
+    """
+    from hyperping._internals import redact_response_body
+
+    deep: dict = {}
+    cursor = deep
+    for _ in range(5000):
+        cursor["n"] = {}
+        cursor = cursor["n"]
+    cursor["leaf"] = "ok"
+
+    # Must not raise RecursionError.
+    redacted = redact_response_body(deep)
+
+    # Walk down the redacted structure; at some bounded depth we should hit
+    # a sentinel rather than a dict.
+    saw_truncation = False
+    walker: object = redacted
+    for _ in range(5000):
+        if isinstance(walker, dict) and walker.get("_truncated"):
+            saw_truncation = True
+            break
+        if not isinstance(walker, dict) or "n" not in walker:
+            break
+        walker = walker["n"]
+    assert saw_truncation, "expected a depth-cap sentinel in the redacted output"
+
+
+def test_exception_with_deep_response_body_constructs_cleanly() -> None:
+    """``HyperpingAPIError`` must not raise when fed a 5000-deep response body."""
+    deep: dict = {}
+    cursor = deep
+    for _ in range(5000):
+        cursor["n"] = {}
+        cursor = cursor["n"]
+
+    # Must not raise RecursionError.
+    err = HyperpingAPIError(
+        message="API error",
+        status_code=500,
+        response_body=deep,
+    )
+    # The structured body is still present (just truncated at some depth).
+    assert err.response_body is not None
+
+
 @respx.mock
 def test_rest_client_400_does_not_leak_server_echoed_auth_header() -> None:
     """End-to-end: a 400 with an echoed Authorization header must not leak it."""
