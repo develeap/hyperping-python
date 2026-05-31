@@ -15,6 +15,7 @@ import asyncio
 import logging
 import random
 import threading
+from collections import OrderedDict
 from collections.abc import Callable
 from typing import Any
 from urllib.parse import urlsplit
@@ -39,7 +40,7 @@ from hyperping._internals import (
     sanitize_for_log,
     validate_base_url,
 )
-from hyperping.client import DEFAULT_RETRY_CONFIG, RetryConfig
+from hyperping.client import _ENDPOINT_BREAKERS_MAX, DEFAULT_RETRY_CONFIG, RetryConfig
 from hyperping.endpoints import API_BASE, Endpoint
 from hyperping.exceptions import (
     HyperpingAPIError,
@@ -122,7 +123,7 @@ class AsyncHyperpingClient(
         self._circuit_breaker = CircuitBreaker(circuit_breaker_config)
         self._per_endpoint_circuit_breaker = per_endpoint_circuit_breaker
         self._breaker_key_fn = breaker_key_fn
-        self._endpoint_breakers: dict[str, CircuitBreaker] = {}
+        self._endpoint_breakers: OrderedDict[str, CircuitBreaker] = OrderedDict()
         self._endpoint_breakers_lock = threading.Lock()
 
         self._client = httpx.AsyncClient(
@@ -187,6 +188,12 @@ class AsyncHyperpingClient(
             if breaker is None:
                 breaker = CircuitBreaker(self._circuit_breaker_config)
                 self._endpoint_breakers[key] = breaker
+                # Evict LRU once the cap is hit to bound memory under a
+                # pathological breaker_key_fn (see HyperpingClient).
+                while len(self._endpoint_breakers) > _ENDPOINT_BREAKERS_MAX:
+                    self._endpoint_breakers.popitem(last=False)
+            else:
+                self._endpoint_breakers.move_to_end(key)
             return breaker
 
     def circuit_breaker_state_for(self, path: str) -> CircuitState:

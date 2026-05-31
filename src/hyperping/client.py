@@ -12,6 +12,7 @@ import logging
 import random
 import threading
 import time
+from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -62,7 +63,12 @@ class RetryConfig:
 
 
 DEFAULT_RETRY_CONFIG = RetryConfig()
-# intentionally internal — not in __all__; exported from _circuit_breaker counterpart
+# Upper bound on the per-endpoint breaker dict. A pathological breaker_key_fn
+# (UUIDs, full query strings, etc.) would otherwise let this dict grow without
+# bound and leak memory in long-running processes; once the cap is reached
+# the least-recently-used key is evicted.
+_ENDPOINT_BREAKERS_MAX = 1024
+# intentionally internal; not in __all__; exported from _circuit_breaker counterpart
 # DEFAULT_CIRCUIT_BREAKER_CONFIG is exported from _circuit_breaker (M7)
 
 
@@ -148,7 +154,7 @@ class HyperpingClient(
         self._circuit_breaker = CircuitBreaker(circuit_breaker_config)
         self._per_endpoint_circuit_breaker = per_endpoint_circuit_breaker
         self._breaker_key_fn = breaker_key_fn
-        self._endpoint_breakers: dict[str, CircuitBreaker] = {}
+        self._endpoint_breakers: OrderedDict[str, CircuitBreaker] = OrderedDict()
         self._endpoint_breakers_lock = threading.Lock()
 
         self._client = httpx.Client(
@@ -221,6 +227,13 @@ class HyperpingClient(
             if breaker is None:
                 breaker = CircuitBreaker(self._circuit_breaker_config)
                 self._endpoint_breakers[key] = breaker
+                # Evict the least-recently-used breaker once the cap is hit
+                # so a pathological breaker_key_fn cannot leak memory.
+                while len(self._endpoint_breakers) > _ENDPOINT_BREAKERS_MAX:
+                    self._endpoint_breakers.popitem(last=False)
+            else:
+                # Touch the key to keep LRU ordering meaningful.
+                self._endpoint_breakers.move_to_end(key)
             return breaker
 
     def circuit_breaker_state_for(self, path: str) -> CircuitState:
