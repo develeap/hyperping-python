@@ -19,7 +19,6 @@ from hyperping._mcp_transport import McpTransport
 from hyperping.client import HyperpingClient
 from hyperping.mcp_client import HyperpingMcpClient
 
-
 # ---------------------------------------------------------------------------
 # Parametrisation: every constructor that accepts a URL-bearing kwarg, paired
 # with the kwarg name. Each entry takes (api_key, **kwargs).

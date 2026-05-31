@@ -20,7 +20,6 @@ from hyperping._async_client import AsyncHyperpingClient
 from hyperping.client import HyperpingClient, RetryConfig
 from hyperping.endpoints import API_BASE
 
-
 _ENDPOINT_BREAKERS_CAP = 1024
 
 
