@@ -12,6 +12,7 @@ import logging
 import random
 import threading
 import time
+from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -28,7 +29,12 @@ from hyperping._circuit_breaker import (
 )
 from hyperping._healthchecks_mixin import HealthchecksMixin
 from hyperping._incidents_mixin import IncidentsMixin
-from hyperping._internals import DEFAULT_USER_AGENT, RETRY_AFTER_MAX, sanitize_for_log
+from hyperping._internals import (
+    DEFAULT_USER_AGENT,
+    RETRY_AFTER_MAX,
+    sanitize_for_log,
+    validate_base_url,
+)
 from hyperping._maintenance_mixin import MaintenanceMixin
 from hyperping._monitors_mixin import MonitorsMixin
 from hyperping._outages_mixin import OutagesMixin
@@ -57,7 +63,12 @@ class RetryConfig:
 
 
 DEFAULT_RETRY_CONFIG = RetryConfig()
-# intentionally internal — not in __all__; exported from _circuit_breaker counterpart
+# Upper bound on the per-endpoint breaker dict. A pathological breaker_key_fn
+# (UUIDs, full query strings, etc.) would otherwise let this dict grow without
+# bound and leak memory in long-running processes; once the cap is reached
+# the least-recently-used key is evicted.
+_ENDPOINT_BREAKERS_MAX = 1024
+# intentionally internal; not in __all__; exported from _circuit_breaker counterpart
 # DEFAULT_CIRCUIT_BREAKER_CONFIG is exported from _circuit_breaker (M7)
 
 
@@ -93,6 +104,7 @@ class HyperpingClient(
         user_agent: str | None = None,
         per_endpoint_circuit_breaker: bool = False,
         breaker_key_fn: Callable[[str], str] | None = None,
+        allow_insecure: bool = False,
     ) -> None:
         """Initialize the Hyperping API client.
 
@@ -132,14 +144,17 @@ class HyperpingClient(
         if not raw_key or not raw_key.strip():
             raise ValueError("api_key must be a non-empty string")
         self._api_key = SecretStr(raw_key) if isinstance(api_key, str) else api_key
-        self.base_url = (base_url or self.DEFAULT_BASE_URL).rstrip("/")
+        self.base_url = validate_base_url(
+            base_url or self.DEFAULT_BASE_URL,
+            allow_insecure=allow_insecure,
+        )
         self.timeout = timeout
         self.retry_config = retry_config or DEFAULT_RETRY_CONFIG
         self._circuit_breaker_config = circuit_breaker_config
         self._circuit_breaker = CircuitBreaker(circuit_breaker_config)
         self._per_endpoint_circuit_breaker = per_endpoint_circuit_breaker
         self._breaker_key_fn = breaker_key_fn
-        self._endpoint_breakers: dict[str, CircuitBreaker] = {}
+        self._endpoint_breakers: OrderedDict[str, CircuitBreaker] = OrderedDict()
         self._endpoint_breakers_lock = threading.Lock()
 
         self._client = httpx.Client(
@@ -212,6 +227,13 @@ class HyperpingClient(
             if breaker is None:
                 breaker = CircuitBreaker(self._circuit_breaker_config)
                 self._endpoint_breakers[key] = breaker
+                # Evict the least-recently-used breaker once the cap is hit
+                # so a pathological breaker_key_fn cannot leak memory.
+                while len(self._endpoint_breakers) > _ENDPOINT_BREAKERS_MAX:
+                    self._endpoint_breakers.popitem(last=False)
+            else:
+                # Touch the key to keep LRU ordering meaningful.
+                self._endpoint_breakers.move_to_end(key)
             return breaker
 
     def circuit_breaker_state_for(self, path: str) -> CircuitState:
@@ -265,8 +287,17 @@ class HyperpingClient(
     def _parse_retry_after(self, response: httpx.Response) -> int | None:
         """Extract and parse the ``Retry-After`` header value.
 
+        Only the *delta-seconds* form of the header (RFC 7231 section 7.1.3)
+        is parsed. The *HTTP-date* form is intentionally not supported here:
+        the Hyperping API has never emitted it, and rolling our own
+        ``parsedate_to_datetime`` call would add an attack surface (untrusted
+        date strings) for no observed benefit. A future server that starts
+        emitting HTTP-date will fall through to the exponential-backoff path
+        rather than crashing the client.
+
         Returns:
-            Integer seconds, or ``None`` if the header is absent or non-numeric.
+            Integer seconds, or ``None`` if the header is absent or not a
+            valid integer delta.
         """
         retry_after = response.headers.get("Retry-After")
         if not retry_after:

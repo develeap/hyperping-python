@@ -50,11 +50,13 @@ class AsyncHyperpingMcpClient:
         api_key: str | SecretStr,
         base_url: str = MCP_URL,
         timeout: float = 30.0,
+        allow_insecure: bool = False,
     ) -> None:
         self._transport = AsyncMcpTransport(
             api_key=api_key,
             base_url=base_url,
             timeout=timeout,
+            allow_insecure=allow_insecure,
         )
 
     # ==================== Internal ====================

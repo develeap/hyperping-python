@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 from pydantic import SecretStr
 
+from hyperping._internals import validate_base_url
 from hyperping._version import __version__
 from hyperping.endpoints import MCP_URL
 from hyperping.exceptions import (
@@ -53,9 +54,14 @@ class AsyncMcpTransport:
         base_url: str = MCP_URL,
         timeout: float = 30.0,
         max_retries: int = 2,
+        allow_insecure: bool = False,
     ) -> None:
         token = api_key.get_secret_value() if isinstance(api_key, SecretStr) else api_key
-        self._url = base_url.rstrip("/")
+        self._url = validate_base_url(
+            base_url,
+            allow_insecure=allow_insecure,
+            param_name="base_url",
+        )
         self._client = httpx.AsyncClient(
             headers={
                 "Authorization": f"Bearer {token}",
@@ -116,11 +122,13 @@ class AsyncMcpTransport:
                     retry_after = int(raw_retry)
                 except ValueError:
                     pass
+            # Drop the raw body for the same reason as the sync transport:
+            # the structured exception still carries retry_after.
             raise HyperpingRateLimitError(
                 "Rate limit exceeded",
                 retry_after=retry_after,
                 status_code=429,
-                response_body={"raw": resp.text[:500]},
+                response_body=None,
             )
         if resp.status_code in (400, 422):
             raise HyperpingValidationError(
@@ -128,10 +136,14 @@ class AsyncMcpTransport:
                 status_code=resp.status_code,
             )
         if resp.status_code != 200:
+            # Drop the raw body for the same reason as the 429 path: the server
+            # may echo subscriber emails, webhook URLs, or other PII in free-
+            # form error text that the structured key-based redactor cannot
+            # match. The status code in the exception is enough for callers.
             raise HyperpingAPIError(
                 f"MCP server returned HTTP {resp.status_code}",
                 status_code=resp.status_code,
-                response_body={"raw": resp.text[:500]},
+                response_body=None,
             )
 
         # HTTP 200. Parse the body so we classify JSON-RPC errors (including
@@ -145,7 +157,7 @@ class AsyncMcpTransport:
             raise HyperpingAPIError(
                 "MCP server returned 200 with non-JSON body",
                 status_code=200,
-                response_body={"raw": resp.text[:500]},
+                response_body=None,
             ) from None
 
         if isinstance(data, dict) and "error" in data:
@@ -292,10 +304,12 @@ class AsyncMcpTransport:
         try:
             return json.loads(text)
         except json.JSONDecodeError as exc:
+            # Server-controlled ``text`` may carry PII; drop it instead of
+            # embedding the first 500 bytes into the exception.
             raise HyperpingAPIError(
                 f"Failed to parse MCP tool response: {exc}",
                 status_code=200,
-                response_body={"raw": text[:500]},
+                response_body=None,
             ) from exc
 
     async def close(self) -> None:

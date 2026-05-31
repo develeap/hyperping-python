@@ -264,15 +264,20 @@ def test_call_tool_http_422():
 
 
 @respx.mock
-def test_call_tool_generic_error_response_body():
-    """Test generic HTTP error attaches response_body with raw text."""
+def test_call_tool_generic_error_drops_raw_response_body():
+    """Generic HTTP error must NOT embed the raw server text in the exception.
+
+    Server-controlled error text may carry subscriber emails / webhook URLs
+    that the structured key-based redactor cannot match; dropping the raw
+    body is the simplest containment (round-2 audit fix).
+    """
     respx.post(MCP_URL).mock(return_value=httpx.Response(418, text="I'm a teapot"))
     transport = McpTransport(api_key="sk_test", base_url=MCP_URL)
     transport._initialized = True
     with pytest.raises(HyperpingAPIError) as exc_info:
         transport.call_tool("some_tool")
     assert exc_info.value.status_code == 418
-    assert exc_info.value.response_body["raw"] == "I'm a teapot"
+    assert exc_info.value.response_body in (None, {})
     transport.close()
 
 

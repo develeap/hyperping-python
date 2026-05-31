@@ -15,6 +15,7 @@ import asyncio
 import logging
 import random
 import threading
+from collections import OrderedDict
 from collections.abc import Callable
 from typing import Any
 from urllib.parse import urlsplit
@@ -33,8 +34,13 @@ from hyperping._circuit_breaker import (
     CircuitBreakerConfig,
     CircuitState,
 )
-from hyperping._internals import DEFAULT_USER_AGENT, RETRY_AFTER_MAX, sanitize_for_log
-from hyperping.client import DEFAULT_RETRY_CONFIG, RetryConfig
+from hyperping._internals import (
+    DEFAULT_USER_AGENT,
+    RETRY_AFTER_MAX,
+    sanitize_for_log,
+    validate_base_url,
+)
+from hyperping.client import _ENDPOINT_BREAKERS_MAX, DEFAULT_RETRY_CONFIG, RetryConfig
 from hyperping.endpoints import API_BASE, Endpoint
 from hyperping.exceptions import (
     HyperpingAPIError,
@@ -79,6 +85,7 @@ class AsyncHyperpingClient(
         user_agent: str | None = None,
         per_endpoint_circuit_breaker: bool = False,
         breaker_key_fn: Callable[[str], str] | None = None,
+        allow_insecure: bool = False,
     ) -> None:
         """Initialize the async Hyperping API client.
 
@@ -106,14 +113,17 @@ class AsyncHyperpingClient(
         if not raw_key or not raw_key.strip():
             raise ValueError("api_key must be a non-empty string")
         self._api_key = SecretStr(raw_key) if isinstance(api_key, str) else api_key
-        self.base_url = (base_url or self.DEFAULT_BASE_URL).rstrip("/")
+        self.base_url = validate_base_url(
+            base_url or self.DEFAULT_BASE_URL,
+            allow_insecure=allow_insecure,
+        )
         self.timeout = timeout
         self.retry_config = retry_config or DEFAULT_RETRY_CONFIG
         self._circuit_breaker_config = circuit_breaker_config
         self._circuit_breaker = CircuitBreaker(circuit_breaker_config)
         self._per_endpoint_circuit_breaker = per_endpoint_circuit_breaker
         self._breaker_key_fn = breaker_key_fn
-        self._endpoint_breakers: dict[str, CircuitBreaker] = {}
+        self._endpoint_breakers: OrderedDict[str, CircuitBreaker] = OrderedDict()
         self._endpoint_breakers_lock = threading.Lock()
 
         self._client = httpx.AsyncClient(
@@ -167,17 +177,39 @@ class AsyncHyperpingClient(
         return pure
 
     def _breaker_for(self, path: str) -> CircuitBreaker:
-        """Return the breaker that governs ``path`` (shared, or per-endpoint)."""
+        """Return the breaker that governs ``path`` (shared, or per-endpoint).
+
+        The critical section under ``_endpoint_breakers_lock`` is purely
+        CPU-bound (a single ``OrderedDict.get`` / ``__setitem__`` /
+        ``move_to_end`` / ``popitem``) and never awaits, so wrapping it in a
+        ``threading.Lock`` does not block the event loop in practice; the
+        loop only "stalls" for the duration of one dict operation, which is
+        well below the resolution of any asyncio scheduling decision.
+
+        We keep ``threading.Lock`` (rather than ``asyncio.Lock``) so the same
+        breaker map remains safe if a caller drives the async client from
+        multiple OS threads (e.g. via ``loop.run_in_executor`` or a thread
+        pool that re-enters the SDK). Switching to ``asyncio.Lock`` would
+        make the per-endpoint path correct only on the loop that owns the
+        lock; ``threading.Lock`` is correct in both cases. Regression
+        coverage:
+        ``tests/unit/test_security_breaker_cap.py
+        ::test_async_breaker_lock_does_not_deadlock_under_gather``.
+        """
         if not self._per_endpoint_circuit_breaker:
             return self._circuit_breaker
         key = self._resolve_breaker_key(path)
-        # threading.Lock here is intentional: see HyperpingClient._breaker_for
-        # for the rationale (works under both pure-asyncio and mixed-thread use).
         with self._endpoint_breakers_lock:
             breaker = self._endpoint_breakers.get(key)
             if breaker is None:
                 breaker = CircuitBreaker(self._circuit_breaker_config)
                 self._endpoint_breakers[key] = breaker
+                # Evict LRU once the cap is hit to bound memory under a
+                # pathological breaker_key_fn (see HyperpingClient).
+                while len(self._endpoint_breakers) > _ENDPOINT_BREAKERS_MAX:
+                    self._endpoint_breakers.popitem(last=False)
+            else:
+                self._endpoint_breakers.move_to_end(key)
             return breaker
 
     def circuit_breaker_state_for(self, path: str) -> CircuitState:
@@ -220,7 +252,12 @@ class AsyncHyperpingClient(
             return {"error": response.text or "Unknown error"}
 
     def _parse_retry_after(self, response: httpx.Response) -> int | None:
-        """Extract and parse the ``Retry-After`` header value."""
+        """Extract and parse the ``Retry-After`` header value.
+
+        Only the delta-seconds form (RFC 7231 7.1.3) is parsed; HTTP-date
+        is intentionally not supported (see
+        :meth:`HyperpingClient._parse_retry_after` for rationale).
+        """
         retry_after = response.headers.get("Retry-After")
         if not retry_after:
             return None
