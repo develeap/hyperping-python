@@ -176,7 +176,19 @@ def _scrub_token_strings(value: str) -> str:
     return value
 
 
-def redact_response_body(value: Any) -> Any:
+# Maximum nesting depth the redactor will descend into before substituting a
+# truncation sentinel. A malicious / malformed server could otherwise return
+# a deeply nested JSON payload that blows the interpreter recursion limit
+# inside ``HyperpingAPIError.__init__`` (masking the original HTTP failure).
+# 32 is comfortably deeper than any real-world API response.
+_REDACT_MAX_DEPTH = 32
+
+# Marker substituted in place of a subtree that exceeds the depth cap. Stable
+# shape so callers / tests can detect the truncation.
+_REDACT_TRUNCATED_SENTINEL = {"_truncated": "max depth reached"}
+
+
+def redact_response_body(value: Any, _depth: int = 0) -> Any:
     """Recursively redact sensitive keys from a parsed JSON response body.
 
     Mirrors the key list used by :func:`sanitize_for_log` but applied at any
@@ -186,7 +198,15 @@ def redact_response_body(value: Any) -> Any:
 
     Lists and tuples are walked element-wise; primitive values are returned
     unchanged. The structure is copied; the input is not mutated.
+
+    Recursion is capped at :data:`_REDACT_MAX_DEPTH`; deeper subtrees are
+    replaced with :data:`_REDACT_TRUNCATED_SENTINEL` so a pathological 5000-
+    level payload cannot raise ``RecursionError`` inside the exception
+    constructor.
     """
+    if _depth >= _REDACT_MAX_DEPTH:
+        # Return a fresh copy so callers cannot mutate the shared sentinel.
+        return dict(_REDACT_TRUNCATED_SENTINEL)
     if isinstance(value, dict):
         redacted: dict[Any, Any] = {}
         for k, v in value.items():
@@ -194,12 +214,12 @@ def redact_response_body(value: Any) -> Any:
             if isinstance(key_str, str) and key_str in _SENSITIVE_RESPONSE_KEYS:
                 redacted[k] = "[REDACTED]"
             else:
-                redacted[k] = redact_response_body(v)
+                redacted[k] = redact_response_body(v, _depth + 1)
         return redacted
     if isinstance(value, list):
-        return [redact_response_body(v) for v in value]
+        return [redact_response_body(v, _depth + 1) for v in value]
     if isinstance(value, tuple):
-        return tuple(redact_response_body(v) for v in value)
+        return tuple(redact_response_body(v, _depth + 1) for v in value)
     if isinstance(value, str):
         return _scrub_token_strings(value)
     return value
