@@ -44,8 +44,14 @@ def validate_base_url(
     Rejects:
     - non-string / empty input
     - URLs that don't parse to ``scheme://host`` form
-    - URLs with userinfo (``user:pass@host``); credentials in URLs are a
-      common exfiltration vector and are never legitimate for this SDK
+    - URLs with userinfo (``user:pass@host``, ``user@host``, ``@host``, etc.);
+      credentials in URLs are a common exfiltration vector and are never
+      legitimate for this SDK. Even an empty userinfo segment is rejected
+      because ``urlsplit`` reports it as ``username == ""`` (falsy), which
+      would slip past a simple truthiness check.
+    - URLs carrying a query string or fragment; a base URL must be limited
+      to ``scheme://host[/path]`` so attacker-controlled ``?api_key=...``
+      values cannot be smuggled into every subsequent request.
     - non-``https`` schemes, unless *allow_insecure* is ``True``
 
     When *allow_insecure* permits an ``http://`` URL, an
@@ -73,9 +79,23 @@ def validate_base_url(
     if not parts.hostname:
         raise ValueError(f"{param_name} must include a host (got {url!r})")
 
-    if parts.username or parts.password:
+    # Reject any userinfo, including the empty / partial forms
+    # (``https://@host``, ``https://:@host``). ``parts.username`` is an empty
+    # string in those cases, so the previous ``or`` truthiness guard let them
+    # through. Checking the raw authority for ``@`` is exhaustive.
+    if (
+        "@" in parts.netloc
+        or parts.username is not None
+        or parts.password is not None
+    ):
         raise ValueError(
             f"{param_name} must not embed userinfo (credentials) in the URL"
+        )
+
+    if parts.query or parts.fragment:
+        raise ValueError(
+            f"{param_name} must not carry a query string or fragment "
+            f"(got {url!r})"
         )
 
     if parts.scheme == "http":
