@@ -112,3 +112,52 @@ def test_https_url_accepted(ctor):
             closer()
         except TypeError:
             pass
+
+
+# ---------------------------------------------------------------------------
+# Round-2 reviewer findings: empty userinfo and query/fragment surfaces
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "empty_userinfo_url",
+    [
+        "https://@attacker.com",
+        "https://:@attacker.com",
+        "https://user@attacker.com",
+    ],
+)
+@pytest.mark.parametrize("ctor", _CONSTRUCTORS)
+def test_empty_or_partial_userinfo_rejected(ctor, empty_userinfo_url):
+    """Even an empty / single-sided userinfo segment must be rejected.
+
+    ``urlsplit('https://@host').username`` is the empty string (falsy), so a
+    naive ``if parts.username or parts.password`` guard does not trip. The
+    audit-requested invariant is "no ``@`` in the authority"; assert that
+    every flavour of empty userinfo raises ``ValueError``.
+    """
+    with pytest.raises(ValueError, match="(?i)userinfo|credentials|user|@"):
+        ctor(empty_userinfo_url)
+
+
+@pytest.mark.parametrize(
+    "url_with_query_or_fragment",
+    [
+        "https://api.hyperping.io?api_key=injected",
+        "https://api.hyperping.io#section",
+        "https://api.hyperping.io/path?x=1",
+        "https://api.hyperping.io/?foo=bar#frag",
+    ],
+)
+@pytest.mark.parametrize("ctor", _CONSTRUCTORS)
+def test_query_or_fragment_in_base_url_rejected(ctor, url_with_query_or_fragment):
+    """Reject any base URL carrying a query string or fragment.
+
+    A base URL is meant to identify scheme + authority + (optional) path
+    prefix. Anything else is attacker-controllable noise that the SDK would
+    otherwise carry into every request (the ``?api_key=injected`` shape is
+    the headline risk). Pick strict rejection over silent stripping so
+    misconfiguration is caught at construction time.
+    """
+    with pytest.raises(ValueError, match="(?i)query|fragment|base_url"):
+        ctor(url_with_query_or_fragment)
