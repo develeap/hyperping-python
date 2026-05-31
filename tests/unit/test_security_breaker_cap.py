@@ -80,3 +80,37 @@ async def test_async_endpoint_breakers_capped_under_unbounded_key_fn() -> None:
 
         assert len(client._endpoint_breakers) <= _ENDPOINT_BREAKERS_CAP
         await client.close()
+
+
+@pytest.mark.asyncio
+async def test_async_breaker_lock_does_not_deadlock_under_gather() -> None:
+    """Concurrent ``asyncio.gather`` must not deadlock on the breaker lock.
+
+    The async client uses a ``threading.Lock`` around the breaker
+    ``OrderedDict`` mutation. In pure-asyncio usage the critical section is
+    purely CPU-bound (no awaits) and runs uncontended, so wrapping it in
+    ``asyncio.gather`` of 1000 tasks must complete cleanly and respect the
+    LRU cap. This is the audit-requested regression test for LOW 3.
+    """
+    import asyncio
+
+    with respx.mock(base_url=API_BASE, assert_all_called=False) as mock:
+        mock.get("/v1/monitors").mock(
+            return_value=httpx.Response(200, json=[_monitor_payload("mon_1")])
+        )
+        client = AsyncHyperpingClient(
+            api_key="sk_test",
+            base_url=API_BASE,
+            retry_config=RetryConfig(max_retries=0),
+            per_endpoint_circuit_breaker=True,
+            breaker_key_fn=lambda _path: str(uuid.uuid4()),
+        )
+        try:
+            results = await asyncio.wait_for(
+                asyncio.gather(*(client.list_monitors() for _ in range(1000))),
+                timeout=30.0,
+            )
+            assert len(results) == 1000
+            assert len(client._endpoint_breakers) <= _ENDPOINT_BREAKERS_CAP
+        finally:
+            await client.close()

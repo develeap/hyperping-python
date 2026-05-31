@@ -177,12 +177,28 @@ class AsyncHyperpingClient(
         return pure
 
     def _breaker_for(self, path: str) -> CircuitBreaker:
-        """Return the breaker that governs ``path`` (shared, or per-endpoint)."""
+        """Return the breaker that governs ``path`` (shared, or per-endpoint).
+
+        The critical section under ``_endpoint_breakers_lock`` is purely
+        CPU-bound (a single ``OrderedDict.get`` / ``__setitem__`` /
+        ``move_to_end`` / ``popitem``) and never awaits, so wrapping it in a
+        ``threading.Lock`` does not block the event loop in practice; the
+        loop only "stalls" for the duration of one dict operation, which is
+        well below the resolution of any asyncio scheduling decision.
+
+        We keep ``threading.Lock`` (rather than ``asyncio.Lock``) so the same
+        breaker map remains safe if a caller drives the async client from
+        multiple OS threads (e.g. via ``loop.run_in_executor`` or a thread
+        pool that re-enters the SDK). Switching to ``asyncio.Lock`` would
+        make the per-endpoint path correct only on the loop that owns the
+        lock; ``threading.Lock`` is correct in both cases. Regression
+        coverage:
+        ``tests/unit/test_security_breaker_cap.py
+        ::test_async_breaker_lock_does_not_deadlock_under_gather``.
+        """
         if not self._per_endpoint_circuit_breaker:
             return self._circuit_breaker
         key = self._resolve_breaker_key(path)
-        # threading.Lock here is intentional: see HyperpingClient._breaker_for
-        # for the rationale (works under both pure-asyncio and mixed-thread use).
         with self._endpoint_breakers_lock:
             breaker = self._endpoint_breakers.get(key)
             if breaker is None:
