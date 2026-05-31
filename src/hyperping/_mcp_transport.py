@@ -137,10 +137,14 @@ class McpTransport:
                 status_code=resp.status_code,
             )
         if resp.status_code != 200:
+            # Drop the raw body for the same reason as the 429 path: the server
+            # may echo subscriber emails, webhook URLs, or other PII in free-
+            # form error text that the structured key-based redactor cannot
+            # match. The status code in the exception is enough for callers.
             raise HyperpingAPIError(
                 f"MCP server returned HTTP {resp.status_code}",
                 status_code=resp.status_code,
-                response_body={"raw": resp.text[:500]},
+                response_body=None,
             )
 
         # HTTP 200. Parse the body so we classify JSON-RPC errors (including
@@ -154,7 +158,7 @@ class McpTransport:
             raise HyperpingAPIError(
                 "MCP server returned 200 with non-JSON body",
                 status_code=200,
-                response_body={"raw": resp.text[:500]},
+                response_body=None,
             ) from None
 
         if isinstance(data, dict) and "error" in data:
@@ -302,10 +306,12 @@ class McpTransport:
         try:
             return json.loads(text)
         except json.JSONDecodeError as exc:
+            # Server-controlled ``text`` may carry PII; drop it instead of
+            # embedding the first 500 bytes into the exception.
             raise HyperpingAPIError(
                 f"Failed to parse MCP tool response: {exc}",
                 status_code=200,
-                response_body={"raw": text[:500]},
+                response_body=None,
             ) from exc
 
     def close(self) -> None:
