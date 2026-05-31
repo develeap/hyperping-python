@@ -287,8 +287,17 @@ class HyperpingClient(
     def _parse_retry_after(self, response: httpx.Response) -> int | None:
         """Extract and parse the ``Retry-After`` header value.
 
+        Only the *delta-seconds* form of the header (RFC 7231 section 7.1.3)
+        is parsed. The *HTTP-date* form is intentionally not supported here:
+        the Hyperping API has never emitted it, and rolling our own
+        ``parsedate_to_datetime`` call would add an attack surface (untrusted
+        date strings) for no observed benefit. A future server that starts
+        emitting HTTP-date will fall through to the exponential-backoff path
+        rather than crashing the client.
+
         Returns:
-            Integer seconds, or ``None`` if the header is absent or non-numeric.
+            Integer seconds, or ``None`` if the header is absent or not a
+            valid integer delta.
         """
         retry_after = response.headers.get("Retry-After")
         if not retry_after:

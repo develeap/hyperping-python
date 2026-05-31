@@ -236,7 +236,12 @@ class AsyncHyperpingClient(
             return {"error": response.text or "Unknown error"}
 
     def _parse_retry_after(self, response: httpx.Response) -> int | None:
-        """Extract and parse the ``Retry-After`` header value."""
+        """Extract and parse the ``Retry-After`` header value.
+
+        Only the delta-seconds form (RFC 7231 7.1.3) is parsed; HTTP-date
+        is intentionally not supported (see
+        :meth:`HyperpingClient._parse_retry_after` for rationale).
+        """
         retry_after = response.headers.get("Retry-After")
         if not retry_after:
             return None
