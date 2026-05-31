@@ -321,27 +321,16 @@ def test_readme_contains_mcp_rate_limits_section():
     )
 
 
-def test_changelog_top_section_documents_mcp_rate_limit_work():
-    """CHANGELOG's most recent section (either [Unreleased] or a released
-    version) must document the MCP rate-limit work shipped in this change.
+def test_changelog_documents_mcp_rate_limit_work():
+    """CHANGELOG must continue to document the MCP rate-limit work shipped in
+    v1.7.0 (ensure_initialized, JSON-RPC -32000 classification, README guidance).
+    Scans the entire file so subsequent releases that roll the top section over
+    do not silently drop the historical entry.
     """
-    import re
-
     changelog = (_repo_root() / "CHANGELOG.md").read_text(encoding="utf-8")
-    # Match the first ## heading (Unreleased or a released version) and slice
-    # up to the next ## heading.
-    match = re.search(
-        r"^## \[(?:Unreleased|\d+\.\d+\.\d+)\][^\n]*\n(.*?)(?=^## \[)",
-        changelog,
-        re.MULTILINE | re.DOTALL,
+    assert "ensure_initialized" in changelog, (
+        "CHANGELOG must mention ensure_initialized() somewhere"
     )
-    assert match, "CHANGELOG is missing a top '## [Unreleased]' or '## [X.Y.Z]' heading"
-    section = match.group(1)
-    assert "### Added" in section, "Top CHANGELOG section is missing '### Added'"
-    assert "### Fixed" in section, "Top CHANGELOG section is missing '### Fixed'"
-    assert "ensure_initialized" in section, (
-        "Top CHANGELOG section must mention ensure_initialized()"
-    )
-    assert "rate limit" in section.lower(), (
-        "Top CHANGELOG section must mention rate-limit handling"
+    assert "rate limit" in changelog.lower(), (
+        "CHANGELOG must mention rate-limit handling somewhere"
     )
