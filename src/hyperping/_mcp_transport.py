@@ -122,11 +122,14 @@ class McpTransport:
                     retry_after = int(raw)
                 except ValueError:
                     pass
+            # Drop the raw body: the server may echo request fields here, and
+            # the structured exception already conveys "Rate limit exceeded"
+            # plus retry_after for the caller's back-off logic.
             raise HyperpingRateLimitError(
                 "Rate limit exceeded",
                 retry_after=retry_after,
                 status_code=429,
-                response_body={"raw": resp.text[:500]},
+                response_body=None,
             )
         if resp.status_code in (400, 422):
             raise HyperpingValidationError(

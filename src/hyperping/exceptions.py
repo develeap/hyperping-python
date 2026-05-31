@@ -1,19 +1,27 @@
 """Hyperping API client exceptions.
 
 All exceptions carry optional ``status_code``, ``response_body``, and
-``request_id`` fields for diagnostic context.
+``request_id`` fields for diagnostic context. ``response_body`` is
+recursively redacted at assignment time so callers that route exceptions
+through ``logging.exception`` cannot accidentally flush server-echoed
+secrets (Authorization headers, subscriber emails, webhook URLs) to logs.
 """
 
 from typing import Any
+
+from hyperping._internals import redact_response_body, sanitize_error_message
 
 
 class HyperpingAPIError(Exception):
     """Base exception for Hyperping API errors.
 
     Args:
-        message: Human-readable error description.
+        message: Human-readable error description. Control bytes are stripped
+            and the value is length-clamped before being included in ``str()``.
         status_code: HTTP status code, if the error originated from an HTTP response.
         response_body: Parsed JSON body of the error response, if available.
+            Sensitive keys (authorization, tokens, emails, webhooks, request
+            headers/body) are redacted recursively at assignment time.
         request_id: Server-assigned request identifier (``x-request-id`` header),
             if the server included one.
     """
@@ -25,10 +33,15 @@ class HyperpingAPIError(Exception):
         response_body: dict[str, Any] | None = None,
         request_id: str | None = None,
     ) -> None:
-        super().__init__(message)
-        self.message = message
+        safe_message = sanitize_error_message(message)
+        super().__init__(safe_message)
+        self.message = safe_message
         self.status_code = status_code
-        self.response_body = response_body or {}
+        # Redact at assignment time so any caller introspecting the attribute
+        # (logging, custom error renderers, traceback frames) sees only the
+        # sanitised copy. The redactor produces a fresh structure; the input
+        # is left untouched.
+        self.response_body = redact_response_body(response_body) if response_body else {}
         self.request_id = request_id
 
     def __str__(self) -> str:

@@ -122,11 +122,13 @@ class AsyncMcpTransport:
                     retry_after = int(raw_retry)
                 except ValueError:
                     pass
+            # Drop the raw body for the same reason as the sync transport:
+            # the structured exception still carries retry_after.
             raise HyperpingRateLimitError(
                 "Rate limit exceeded",
                 retry_after=retry_after,
                 status_code=429,
-                response_body={"raw": resp.text[:500]},
+                response_body=None,
             )
         if resp.status_code in (400, 422):
             raise HyperpingValidationError(
