@@ -28,7 +28,12 @@ from hyperping._circuit_breaker import (
 )
 from hyperping._healthchecks_mixin import HealthchecksMixin
 from hyperping._incidents_mixin import IncidentsMixin
-from hyperping._internals import DEFAULT_USER_AGENT, RETRY_AFTER_MAX, sanitize_for_log
+from hyperping._internals import (
+    DEFAULT_USER_AGENT,
+    RETRY_AFTER_MAX,
+    sanitize_for_log,
+    validate_base_url,
+)
 from hyperping._maintenance_mixin import MaintenanceMixin
 from hyperping._monitors_mixin import MonitorsMixin
 from hyperping._outages_mixin import OutagesMixin
@@ -93,6 +98,7 @@ class HyperpingClient(
         user_agent: str | None = None,
         per_endpoint_circuit_breaker: bool = False,
         breaker_key_fn: Callable[[str], str] | None = None,
+        allow_insecure: bool = False,
     ) -> None:
         """Initialize the Hyperping API client.
 
@@ -132,7 +138,10 @@ class HyperpingClient(
         if not raw_key or not raw_key.strip():
             raise ValueError("api_key must be a non-empty string")
         self._api_key = SecretStr(raw_key) if isinstance(api_key, str) else api_key
-        self.base_url = (base_url or self.DEFAULT_BASE_URL).rstrip("/")
+        self.base_url = validate_base_url(
+            base_url or self.DEFAULT_BASE_URL,
+            allow_insecure=allow_insecure,
+        )
         self.timeout = timeout
         self.retry_config = retry_config or DEFAULT_RETRY_CONFIG
         self._circuit_breaker_config = circuit_breaker_config

@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 from pydantic import SecretStr
 
+from hyperping._internals import validate_base_url
 from hyperping._version import __version__
 from hyperping.endpoints import MCP_URL
 from hyperping.exceptions import (
@@ -53,9 +54,14 @@ class AsyncMcpTransport:
         base_url: str = MCP_URL,
         timeout: float = 30.0,
         max_retries: int = 2,
+        allow_insecure: bool = False,
     ) -> None:
         token = api_key.get_secret_value() if isinstance(api_key, SecretStr) else api_key
-        self._url = base_url.rstrip("/")
+        self._url = validate_base_url(
+            base_url,
+            allow_insecure=allow_insecure,
+            param_name="base_url",
+        )
         self._client = httpx.AsyncClient(
             headers={
                 "Authorization": f"Bearer {token}",
