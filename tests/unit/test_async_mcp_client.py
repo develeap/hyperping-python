@@ -328,3 +328,86 @@ async def test_ensure_initialized_real_transport_is_idempotent():
     await client.ensure_initialized()
     assert route.call_count == 2
     await client.close()
+
+
+# -- MCP write tools (ticket #139561) ----------------------------------------
+
+from hyperping.models._monitor_models import MonitorCreate  # noqa: E402
+
+
+_MONITOR_PAYLOAD = {
+    "uuid": "mon_abc",
+    "name": "My API",
+    "url": "https://api.example.com",
+    "protocol": "http",
+}
+
+
+@pytest.mark.asyncio
+async def test_create_monitor():
+    client = make_client()
+    client._transport.call_tool.return_value = _MONITOR_PAYLOAD
+    monitor = MonitorCreate(name="My API", url="https://api.example.com")
+    result = await client.create_monitor(monitor)
+    assert isinstance(result, Monitor)
+    assert result.uuid == "mon_abc"
+    client._transport.call_tool.assert_called_once_with(
+        "create_monitor", monitor.model_dump(exclude_none=True)
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_monitor():
+    client = make_client()
+    client._transport.call_tool.return_value = _MONITOR_PAYLOAD
+    result = await client.update_monitor("mon_abc", name="New Name", check_frequency=60)
+    assert isinstance(result, Monitor)
+    client._transport.call_tool.assert_called_once_with(
+        "update_monitor", {"uuid": "mon_abc", "name": "New Name", "check_frequency": 60}
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_monitor_no_kwargs():
+    client = make_client()
+    client._transport.call_tool.return_value = _MONITOR_PAYLOAD
+    result = await client.update_monitor("mon_abc")
+    assert isinstance(result, Monitor)
+    client._transport.call_tool.assert_called_once_with(
+        "update_monitor", {"uuid": "mon_abc"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_pause_monitor():
+    client = make_client()
+    client._transport.call_tool.return_value = {**_MONITOR_PAYLOAD, "paused": True}
+    result = await client.pause_monitor("mon_abc")
+    assert isinstance(result, Monitor)
+    assert result.paused is True
+    client._transport.call_tool.assert_called_once_with(
+        "pause_monitor", {"uuid": "mon_abc"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_resume_monitor():
+    client = make_client()
+    client._transport.call_tool.return_value = {**_MONITOR_PAYLOAD, "paused": False}
+    result = await client.resume_monitor("mon_abc")
+    assert isinstance(result, Monitor)
+    assert result.paused is False
+    client._transport.call_tool.assert_called_once_with(
+        "resume_monitor", {"uuid": "mon_abc"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_delete_monitor():
+    client = make_client()
+    client._transport.call_tool.return_value = None
+    result = await client.delete_monitor("mon_abc")
+    assert result is None
+    client._transport.call_tool.assert_called_once_with(
+        "delete_monitor", {"uuid": "mon_abc"}
+    )
