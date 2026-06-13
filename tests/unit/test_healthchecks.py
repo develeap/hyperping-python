@@ -297,3 +297,15 @@ class TestErrorHandling:
 
         with pytest.raises(HyperpingAPIError):
             client.get_healthcheck("hc_abc123")
+
+
+class TestHealthcheckUpdateProjectUuid:
+    def test_included_in_serialized_output(self) -> None:
+        h = HealthcheckUpdate(project_uuid="proj_x")
+        payload = h.model_dump(exclude_none=True)
+        assert payload["project_uuid"] == "proj_x"
+
+    def test_excluded_when_none(self) -> None:
+        h = HealthcheckUpdate()
+        payload = h.model_dump(exclude_none=True)
+        assert "project_uuid" not in payload

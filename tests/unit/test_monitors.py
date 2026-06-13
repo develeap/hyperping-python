@@ -672,3 +672,27 @@ class TestRetryJitter:
             slept = mock_sleep.call_args[0][0]
             assert slept == 45.0
             c.close()
+
+
+class TestMonitorCreateProjectUuid:
+    def test_included_in_serialized_output(self) -> None:
+        m = MonitorCreate(name="t", url="https://x.com", project_uuid="proj_x")
+        payload = m.model_dump(by_alias=True, exclude_none=True)
+        assert payload["projectUuid"] == "proj_x"
+
+    def test_excluded_when_none(self) -> None:
+        m = MonitorCreate(name="t", url="https://x.com")
+        payload = m.model_dump(by_alias=True, exclude_none=True)
+        assert "projectUuid" not in payload
+
+
+class TestMonitorUpdateProjectUuid:
+    def test_included_in_serialized_output(self) -> None:
+        m = MonitorUpdate(project_uuid="proj_x")
+        payload = m.model_dump(by_alias=True, exclude_none=True)
+        assert payload["projectUuid"] == "proj_x"
+
+    def test_excluded_when_none(self) -> None:
+        m = MonitorUpdate()
+        payload = m.model_dump(by_alias=True, exclude_none=True)
+        assert "projectUuid" not in payload
