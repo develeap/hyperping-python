@@ -11,7 +11,7 @@ from hyperping._mcp_transport import MCP_URL
 from hyperping.exceptions import HyperpingRateLimitError
 from hyperping.mcp_client import HyperpingMcpClient
 from hyperping.models._integration_models import Integration
-from hyperping.models._monitor_models import Monitor
+from hyperping.models._monitor_models import Monitor, MonitorCreate
 from hyperping.models._observability_models import MonitorAnomaly, ProbeLogResponse
 from hyperping.models._oncall_models import EscalationPolicy, OnCallSchedule, TeamMember
 from hyperping.models._outage_models import OutageTimeline
@@ -333,4 +333,79 @@ def test_changelog_documents_mcp_rate_limit_work():
     )
     assert "rate limit" in changelog.lower(), (
         "CHANGELOG must mention rate-limit handling somewhere"
+    )
+
+
+# -- MCP write tools (ticket #139561) ----------------------------------------
+
+
+_MONITOR_PAYLOAD = {
+    "uuid": "mon_abc",
+    "name": "My API",
+    "url": "https://api.example.com",
+    "protocol": "http",
+}
+
+
+def test_create_monitor():
+    client = make_client()
+    client._transport.call_tool.return_value = _MONITOR_PAYLOAD
+    monitor = MonitorCreate(name="My API", url="https://api.example.com")
+    result = client.create_monitor(monitor)
+    assert isinstance(result, Monitor)
+    assert result.uuid == "mon_abc"
+    client._transport.call_tool.assert_called_once_with(
+        "create_monitor", monitor.model_dump(exclude_none=True)
+    )
+
+
+def test_update_monitor():
+    client = make_client()
+    client._transport.call_tool.return_value = _MONITOR_PAYLOAD
+    result = client.update_monitor("mon_abc", name="New Name", check_frequency=60)
+    assert isinstance(result, Monitor)
+    client._transport.call_tool.assert_called_once_with(
+        "update_monitor", {"uuid": "mon_abc", "name": "New Name", "check_frequency": 60}
+    )
+
+
+def test_update_monitor_no_kwargs():
+    client = make_client()
+    client._transport.call_tool.return_value = _MONITOR_PAYLOAD
+    result = client.update_monitor("mon_abc")
+    assert isinstance(result, Monitor)
+    client._transport.call_tool.assert_called_once_with(
+        "update_monitor", {"uuid": "mon_abc"}
+    )
+
+
+def test_pause_monitor():
+    client = make_client()
+    client._transport.call_tool.return_value = {**_MONITOR_PAYLOAD, "paused": True}
+    result = client.pause_monitor("mon_abc")
+    assert isinstance(result, Monitor)
+    assert result.paused is True
+    client._transport.call_tool.assert_called_once_with(
+        "pause_monitor", {"uuid": "mon_abc"}
+    )
+
+
+def test_resume_monitor():
+    client = make_client()
+    client._transport.call_tool.return_value = {**_MONITOR_PAYLOAD, "paused": False}
+    result = client.resume_monitor("mon_abc")
+    assert isinstance(result, Monitor)
+    assert result.paused is False
+    client._transport.call_tool.assert_called_once_with(
+        "resume_monitor", {"uuid": "mon_abc"}
+    )
+
+
+def test_delete_monitor():
+    client = make_client()
+    client._transport.call_tool.return_value = None
+    result = client.delete_monitor("mon_abc")
+    assert result is None
+    client._transport.call_tool.assert_called_once_with(
+        "delete_monitor", {"uuid": "mon_abc"}
     )
