@@ -12,7 +12,12 @@ from hyperping.exceptions import HyperpingRateLimitError
 from hyperping.models._integration_models import Integration
 from hyperping.models._monitor_models import Monitor
 from hyperping.models._observability_models import MonitorAnomaly, ProbeLogResponse
-from hyperping.models._oncall_models import EscalationPolicy, EscalationStep, OnCallSchedule, TeamMember
+from hyperping.models._oncall_models import (
+    EscalationPolicy,
+    EscalationStep,
+    OnCallSchedule,
+    TeamMember,
+)
 from hyperping.models._outage_models import OutageTimeline
 from hyperping.models._reporting_models import (
     AlertHistory,
