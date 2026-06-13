@@ -41,7 +41,9 @@ from hyperping.mcp_client import HyperpingMcpClient
 from hyperping.models import (
     DEFAULT_REGIONS,
     AddIncidentUpdateRequest,
+    Alert,
     AlertHistory,
+    AlertType,
     DnsRecordType,
     EscalationPolicy,
     Healthcheck,
@@ -120,6 +122,9 @@ __all__ = [
     "HyperpingNotFoundError",
     "HyperpingRateLimitError",
     "HyperpingValidationError",
+    # Alert models (PY-10: provisional, reconcile when alerts endpoint ships)
+    "Alert",
+    "AlertType",
     # Monitor enums
     "HttpMethod",
     "MonitorFrequency",

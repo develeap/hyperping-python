@@ -29,6 +29,7 @@ from hyperping._async_maintenance_mixin import AsyncMaintenanceMixin
 from hyperping._async_monitors_mixin import AsyncMonitorsMixin
 from hyperping._async_outages_mixin import AsyncOutagesMixin
 from hyperping._async_statuspages_mixin import AsyncStatusPagesMixin
+from hyperping._async_streaming_mixin import AsyncStreamingMixin
 from hyperping._circuit_breaker import (
     CircuitBreaker,
     CircuitBreakerConfig,
@@ -58,6 +59,7 @@ class AsyncHyperpingClient(
     AsyncOutagesMixin,
     AsyncStatusPagesMixin,
     AsyncHealthchecksMixin,
+    AsyncStreamingMixin,
 ):
     """Async client for interacting with the Hyperping API.
 
