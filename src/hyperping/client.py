@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
 
-import httpx
+import httpx2 as httpx
 from pydantic import SecretStr
 
 from hyperping._circuit_breaker import (
