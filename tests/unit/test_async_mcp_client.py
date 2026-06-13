@@ -12,7 +12,7 @@ from hyperping.exceptions import HyperpingRateLimitError
 from hyperping.models._integration_models import Integration
 from hyperping.models._monitor_models import Monitor
 from hyperping.models._observability_models import MonitorAnomaly, ProbeLogResponse
-from hyperping.models._oncall_models import EscalationPolicy, OnCallSchedule, TeamMember
+from hyperping.models._oncall_models import EscalationPolicy, EscalationStep, OnCallSchedule, TeamMember
 from hyperping.models._outage_models import OutageTimeline
 from hyperping.models._reporting_models import (
     AlertHistory,
@@ -61,12 +61,18 @@ async def test_list_on_call_schedules():
 async def test_list_team_members_bare_array():
     client = make_client()
     client._transport.call_tool.return_value = [
-        {"uuid": "u1", "email": "a@b.com", "name": "A"},
+        {
+            "uuid": "u1",
+            "email": "a@b.com",
+            "name": "A",
+            "ssoPictureUrl": "https://sso.example.com/pic.png",
+        },
     ]
     result = await client.list_team_members()
     assert len(result) == 1
     assert isinstance(result[0], TeamMember)
     assert result[0].email == "a@b.com"
+    assert result[0].sso_picture_url == "https://sso.example.com/pic.png"
     client._transport.call_tool.assert_called_once_with("list_team_members", {})
 
 
@@ -241,11 +247,30 @@ async def test_get_on_call_schedule():
 async def test_list_escalation_policies():
     client = make_client()
     client._transport.call_tool.return_value = [
-        {"uuid": "ep1", "name": "Default", "steps": []},
+        {
+            "uuid": "ep1",
+            "name": "Core-Escalation",
+            "steps": [
+                {
+                    "uuid": "step_1",
+                    "wait_before": 0,
+                    "channels": ["int_abc"],
+                    "tempId": "temp_123",
+                }
+            ],
+            "createdBy": None,
+            "createdAt": "2026-03-02T09:04:49.000Z",
+            "grouped_alerts_window": 300,
+            "grouped_alerts_enabled": 1,
+            "monitorCount": 69,
+        },
     ]
     result = await client.list_escalation_policies()
     assert len(result) == 1
     assert isinstance(result[0], EscalationPolicy)
+    assert result[0].monitor_count == 69
+    assert isinstance(result[0].steps[0], EscalationStep)
+    assert result[0].steps[0].channels == ["int_abc"]
     client._transport.call_tool.assert_called_once_with("list_escalation_policies", {})
 
 
@@ -254,11 +279,26 @@ async def test_get_escalation_policy():
     client = make_client()
     client._transport.call_tool.return_value = {
         "uuid": "ep1",
-        "name": "Default",
-        "steps": [],
+        "name": "Core-Escalation",
+        "steps": [
+            {
+                "uuid": "step_1",
+                "wait_before": 5,
+                "channels": ["int_xyz"],
+                "tempId": "temp_456",
+            }
+        ],
+        "createdBy": None,
+        "createdAt": "2026-03-02T09:04:49.000Z",
+        "grouped_alerts_window": 300,
+        "grouped_alerts_enabled": 1,
+        "monitorCount": 42,
     }
     result = await client.get_escalation_policy("ep1")
     assert isinstance(result, EscalationPolicy)
+    assert result.monitor_count == 42
+    assert isinstance(result.steps[0], EscalationStep)
+    assert result.steps[0].wait_before == 5
     client._transport.call_tool.assert_called_once_with("get_escalation_policy", {"uuid": "ep1"})
 
 
@@ -266,11 +306,19 @@ async def test_get_escalation_policy():
 async def test_list_integrations():
     client = make_client()
     client._transport.call_tool.return_value = [
-        {"uuid": "int1", "name": "Slack", "type": "slack", "active": True},
+        {
+            "uuid": "int1",
+            "name": "Teams",
+            "channel": "teams",
+            "createdBy": "usr_x",
+            "createdAt": "2026-03-03T15:00:59.000Z",
+        },
     ]
     result = await client.list_integrations()
     assert len(result) == 1
     assert isinstance(result[0], Integration)
+    assert result[0].integration_type == "teams"
+    assert result[0].created_by == "usr_x"
     client._transport.call_tool.assert_called_once_with("list_integrations", {})
 
 
@@ -279,12 +327,19 @@ async def test_get_integration():
     client = make_client()
     client._transport.call_tool.return_value = {
         "uuid": "int1",
-        "name": "Slack",
-        "type": "slack",
-        "active": True,
+        "name": "Teams",
+        "channel": "teams",
+        "createdBy": "admin@example.com",
+        "createdAt": "2026-03-03T15:00:59.000Z",
+        "region": None,
+        "metadata": None,
     }
     result = await client.get_integration("int1")
     assert isinstance(result, Integration)
+    assert result.integration_type == "teams"
+    assert result.created_by == "admin@example.com"
+    assert result.created_at == "2026-03-03T15:00:59.000Z"
+    assert result.region is None
     client._transport.call_tool.assert_called_once_with("get_integration", {"uuid": "int1"})
 
 
