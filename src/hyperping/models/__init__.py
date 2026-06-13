@@ -56,7 +56,12 @@ from hyperping.models._observability_models import (
     ProbeLog,
     ProbeLogResponse,
 )
-from hyperping.models._oncall_models import EscalationPolicy, OnCallSchedule, TeamMember
+from hyperping.models._oncall_models import (
+    EscalationPolicy,
+    EscalationStep,
+    OnCallSchedule,
+    TeamMember,
+)
 from hyperping.models._outage_models import (
     Outage,
     OutageAction,
@@ -133,6 +138,7 @@ __all__ = [
     "ProbeLogResponse",
     # On-call models
     "OnCallSchedule",
+    "EscalationStep",
     "EscalationPolicy",
     "TeamMember",
     # Integration models

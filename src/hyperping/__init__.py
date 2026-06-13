@@ -44,6 +44,7 @@ from hyperping.models import (
     AlertHistory,
     DnsRecordType,
     EscalationPolicy,
+    EscalationStep,
     Healthcheck,
     HealthcheckCreate,
     HealthcheckUpdate,
@@ -168,6 +169,7 @@ __all__ = [
     "ProbeLogResponse",
     # On-call
     "OnCallSchedule",
+    "EscalationStep",
     "EscalationPolicy",
     "TeamMember",
     # Integrations
