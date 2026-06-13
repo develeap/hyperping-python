@@ -49,6 +49,7 @@ class HealthcheckUpdate(BaseModel):
     period: int | None = None
     grace: int | None = None
     escalation_policy: str | None = None
+    project_uuid: str | None = None
 
 
 class Healthcheck(HealthcheckBase):

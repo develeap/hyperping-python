@@ -286,6 +286,8 @@ class MonitorCreate(MonitorBase):
     All fields from MonitorBase are available. Required: name, url, protocol.
     """
 
+    project_uuid: str | None = Field(default=None, alias="projectUuid")
+
     @model_validator(mode="before")
     @classmethod
     def remap_and_validate_create(cls, data: Any) -> Any:
@@ -332,6 +334,7 @@ class MonitorUpdate(BaseModel):
     dns_record_type: str | None = Field(default=None, alias="dns_record_type")
     dns_nameserver: str | None = Field(default=None, alias="dns_nameserver")
     dns_expected_answer: str | None = Field(default=None, alias="dns_expected_answer")
+    project_uuid: str | None = Field(default=None, alias="projectUuid")
 
 
 class Monitor(MonitorBase):

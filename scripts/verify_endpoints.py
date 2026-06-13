@@ -97,6 +97,9 @@ def main() -> int:
         ("list_integrations", "/v2/integrations", None),
         # Monitor search
         ("search_monitors", "/v1/monitors/search", {"query": "test"}),
+        # Speculative project endpoints (ticket #7117f0)
+        ("list_projects_v1", "/v1/projects", None),
+        ("list_projects_v2", "/v2/projects", None),
     ]
 
     # Sub-resource paths needing a real UUID
@@ -157,7 +160,10 @@ def main() -> int:
     fail_count = sum(1 for r in results if not r.ok)
     not_found = sum(1 for r in results if r.status == 404)
     print()
-    print(f"Total: {len(results)} | OK: {ok_count} | 404: {not_found} | Other errors: {fail_count - not_found}")
+    other_errors = fail_count - not_found
+    print(
+        f"Total: {len(results)} | OK: {ok_count} | 404: {not_found} | Other errors: {other_errors}"
+    )
 
     return 1 if fail_count > 0 else 0
 
