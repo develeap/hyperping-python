@@ -9,7 +9,7 @@ import threading
 import time
 from typing import Any
 
-import httpx
+import httpx2 as httpx
 from pydantic import SecretStr
 
 from hyperping._internals import validate_base_url
