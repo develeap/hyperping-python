@@ -144,8 +144,7 @@ def test_mcp_transport_5xx_does_not_leak_raw_server_body() -> None:
     respx.post(MCP_URL).mock(
         return_value=httpx.Response(
             500,
-            text='{"echo":{"subscriber_email":"victim@example.com"},'
-            '"hint":"Bearer sk_secret_mcp"}',
+            text='{"echo":{"subscriber_email":"victim@example.com"},"hint":"Bearer sk_secret_mcp"}',
         )
     )
     transport = McpTransport(api_key="sk_test", base_url=MCP_URL)

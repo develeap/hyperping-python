@@ -83,20 +83,11 @@ def validate_base_url(
     # (``https://@host``, ``https://:@host``). ``parts.username`` is an empty
     # string in those cases, so the previous ``or`` truthiness guard let them
     # through. Checking the raw authority for ``@`` is exhaustive.
-    if (
-        "@" in parts.netloc
-        or parts.username is not None
-        or parts.password is not None
-    ):
-        raise ValueError(
-            f"{param_name} must not embed userinfo (credentials) in the URL"
-        )
+    if "@" in parts.netloc or parts.username is not None or parts.password is not None:
+        raise ValueError(f"{param_name} must not embed userinfo (credentials) in the URL")
 
     if parts.query or parts.fragment:
-        raise ValueError(
-            f"{param_name} must not carry a query string or fragment "
-            f"(got {url!r})"
-        )
+        raise ValueError(f"{param_name} must not carry a query string or fragment (got {url!r})")
 
     if parts.scheme == "http":
         if not allow_insecure:

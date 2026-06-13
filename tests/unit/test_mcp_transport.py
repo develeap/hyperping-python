@@ -539,9 +539,7 @@ def test_initialize_is_idempotent():
 def test_initialize_rate_limit_latches_cooloff(monkeypatch):
     """After a rate-limited initialize, further call_tool calls short-circuit."""
     fake_now = {"t": 1000.0}
-    monkeypatch.setattr(
-        "hyperping._mcp_transport.time.monotonic", lambda: fake_now["t"]
-    )
+    monkeypatch.setattr("hyperping._mcp_transport.time.monotonic", lambda: fake_now["t"])
 
     rl_response = httpx.Response(
         200,
@@ -576,9 +574,7 @@ def test_initialize_rate_limit_latches_cooloff(monkeypatch):
 def test_initialize_cooloff_clears_after_deadline(monkeypatch):
     """Once the cool-off elapses, initialize is attempted again."""
     fake_now = {"t": 1000.0}
-    monkeypatch.setattr(
-        "hyperping._mcp_transport.time.monotonic", lambda: fake_now["t"]
-    )
+    monkeypatch.setattr("hyperping._mcp_transport.time.monotonic", lambda: fake_now["t"])
 
     rl_body = {
         "jsonrpc": "2.0",
@@ -638,7 +634,9 @@ def test_rate_limit_is_not_retried_by_call_tool():
     """call_tool's transient retry loop must NOT retry HyperpingRateLimitError."""
     route = respx.post(MCP_URL).mock(
         return_value=httpx.Response(
-            429, text="Rate limited", headers={"retry-after": "5"},
+            429,
+            text="Rate limited",
+            headers={"retry-after": "5"},
         ),
     )
     transport = McpTransport(api_key="sk_test", base_url=MCP_URL, max_retries=3)
@@ -714,14 +712,14 @@ def test_six_fresh_clients_under_jsonrpc_rate_limit_all_fail_typed():
 @pytest.mark.parametrize(
     "message, expected",
     [
-        ('Hyperping MCP rate limit exceeded. Retry after 32s.', 32),
+        ("Hyperping MCP rate limit exceeded. Retry after 32s.", 32),
         ('Rate limit exceeded for "initialize". Retry-After: 30s', 30),
-        ('Rate limit exceeded. retry after 30 seconds.', 30),
-        ('Rate limit exceeded. RETRY AFTER 7', 7),
-        ('Rate limit exceeded. Retry after 0s', 0),
-        ('Rate limit exceeded. Retry after 1.5s', 1),  # sub-second floored
-        ('Rate limit exceeded.', None),  # no advertised value
-        ('Rate limit exceeded. Try again later.', None),  # graceful
+        ("Rate limit exceeded. retry after 30 seconds.", 30),
+        ("Rate limit exceeded. RETRY AFTER 7", 7),
+        ("Rate limit exceeded. Retry after 0s", 0),
+        ("Rate limit exceeded. Retry after 1.5s", 1),  # sub-second floored
+        ("Rate limit exceeded.", None),  # no advertised value
+        ("Rate limit exceeded. Try again later.", None),  # graceful
     ],
 )
 @respx.mock
@@ -777,9 +775,7 @@ def test_jsonrpc_rate_limit_marker_requires_exceeded():
 @respx.mock
 def test_notifications_initialized_rate_limit_classified(monkeypatch):
     """A 200 + -32000 on notifications/initialized raises HyperpingRateLimitError."""
-    monkeypatch.setattr(
-        "hyperping._mcp_transport.time.monotonic", lambda: 1000.0
-    )
+    monkeypatch.setattr("hyperping._mcp_transport.time.monotonic", lambda: 1000.0)
     respx.post(MCP_URL).mock(
         side_effect=[
             # initialize succeeds
@@ -818,9 +814,7 @@ def test_notifications_initialized_rate_limit_classified(monkeypatch):
 def test_cooloff_short_circuit_preserves_429_status_code(monkeypatch):
     """A latch armed by HTTP 429 must short-circuit with status_code=429."""
     fake_now = {"t": 1000.0}
-    monkeypatch.setattr(
-        "hyperping._mcp_transport.time.monotonic", lambda: fake_now["t"]
-    )
+    monkeypatch.setattr("hyperping._mcp_transport.time.monotonic", lambda: fake_now["t"])
     respx.post(MCP_URL).mock(
         return_value=httpx.Response(
             429,
@@ -843,9 +837,7 @@ def test_cooloff_short_circuit_preserves_429_status_code(monkeypatch):
 def test_cooloff_short_circuit_preserves_200_status_code(monkeypatch):
     """A latch armed by JSON-RPC -32000 short-circuits with status_code=200."""
     fake_now = {"t": 1000.0}
-    monkeypatch.setattr(
-        "hyperping._mcp_transport.time.monotonic", lambda: fake_now["t"]
-    )
+    monkeypatch.setattr("hyperping._mcp_transport.time.monotonic", lambda: fake_now["t"])
     respx.post(MCP_URL).mock(
         return_value=httpx.Response(
             200,
@@ -876,9 +868,7 @@ def test_cooloff_short_circuit_preserves_200_status_code(monkeypatch):
 def test_cooloff_short_circuit_uses_math_ceil_not_plus_one(monkeypatch):
     """When server advertises Retry-After: 30, short-circuit returns 30, not 31."""
     fake_now = {"t": 1000.0}
-    monkeypatch.setattr(
-        "hyperping._mcp_transport.time.monotonic", lambda: fake_now["t"]
-    )
+    monkeypatch.setattr("hyperping._mcp_transport.time.monotonic", lambda: fake_now["t"])
     respx.post(MCP_URL).mock(
         return_value=httpx.Response(
             200,
@@ -921,9 +911,7 @@ def test_cooloff_short_circuit_uses_math_ceil_not_plus_one(monkeypatch):
 def test_jsonrpc_rate_limit_with_retry_after_zero_does_not_latch(monkeypatch):
     """retry_after=0 from server means retry-now; do not set a 30s default."""
     fake_now = {"t": 1000.0}
-    monkeypatch.setattr(
-        "hyperping._mcp_transport.time.monotonic", lambda: fake_now["t"]
-    )
+    monkeypatch.setattr("hyperping._mcp_transport.time.monotonic", lambda: fake_now["t"])
     ok_init = httpx.Response(
         200,
         json={"jsonrpc": "2.0", "id": 1, "result": {"protocolVersion": "2025-03-26"}},

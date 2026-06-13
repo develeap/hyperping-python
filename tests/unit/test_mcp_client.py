@@ -278,7 +278,9 @@ def test_ensure_initialized_delegates_to_transport():
 def test_ensure_initialized_propagates_rate_limit():
     client = make_client()
     client._transport.initialize.side_effect = HyperpingRateLimitError(
-        "rate limited on initialize", retry_after=30, status_code=200,
+        "rate limited on initialize",
+        retry_after=30,
+        status_code=200,
     )
     with pytest.raises(HyperpingRateLimitError) as exc_info:
         client.ensure_initialized()
@@ -331,6 +333,4 @@ def test_changelog_documents_mcp_rate_limit_work():
     assert "ensure_initialized" in changelog, (
         "CHANGELOG must mention ensure_initialized() somewhere"
     )
-    assert "rate limit" in changelog.lower(), (
-        "CHANGELOG must mention rate-limit handling somewhere"
-    )
+    assert "rate limit" in changelog.lower(), "CHANGELOG must mention rate-limit handling somewhere"

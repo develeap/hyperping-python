@@ -220,9 +220,7 @@ class TestSyncClientSpans:
         assert spans[0].status.status_code == StatusCode.ERROR
 
     @respx.mock
-    def test_no_span_when_tracer_is_none(
-        self, span_exporter: InMemorySpanExporter
-    ) -> None:
+    def test_no_span_when_tracer_is_none(self, span_exporter: InMemorySpanExporter) -> None:
         """When _tracer is None, no span is emitted and the client works normally."""
         c = HyperpingClient(
             api_key="sk_test_key",
