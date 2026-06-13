@@ -1,8 +1,7 @@
 """Tests for hyp tenant onboard subcommand."""
 
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
-import pytest
 from typer.testing import CliRunner
 
 from hyperping.cli._app import app

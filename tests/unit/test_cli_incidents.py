@@ -3,11 +3,10 @@
 import json
 from unittest.mock import MagicMock, patch
 
-import pytest
 from typer.testing import CliRunner
 
 from hyperping.cli._app import app
-from hyperping.models import Incident, IncidentUpdate, LocalizedText
+from hyperping.models import Incident
 
 runner = CliRunner()
 
@@ -95,7 +94,10 @@ class TestIncidentList:
         with patch("hyperping.cli._incidents.get_client", return_value=_make_client()):
             result = runner.invoke(
                 app,
-                ["--api-key", "sk_test", "incident", "create", "--text", "DB down", "--statuspage", "sp_abc"],
+                [
+                    "--api-key", "sk_test", "incident", "create",
+                    "--text", "DB down", "--statuspage", "sp_abc",
+                ],
             )
         assert result.exit_code != 0
 
@@ -111,6 +113,9 @@ class TestIncidentList:
         with patch("hyperping.cli._incidents.get_client", return_value=_make_client()):
             result = runner.invoke(
                 app,
-                ["--api-key", "sk_test", "incident", "resolve", "inci_123", "--message", "Fixed it"],
+                [
+                    "--api-key", "sk_test", "incident", "resolve",
+                    "inci_123", "--message", "Fixed it",
+                ],
             )
         assert result.exit_code == 0, result.output
