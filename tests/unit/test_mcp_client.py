@@ -11,7 +11,7 @@ from hyperping._mcp_transport import MCP_URL
 from hyperping.exceptions import HyperpingRateLimitError
 from hyperping.mcp_client import HyperpingMcpClient
 from hyperping.models._integration_models import Integration
-from hyperping.models._monitor_models import Monitor
+from hyperping.models._monitor_models import Monitor, MonitorCreate
 from hyperping.models._observability_models import MonitorAnomaly, ProbeLogResponse
 from hyperping.models._oncall_models import EscalationPolicy, OnCallSchedule, TeamMember
 from hyperping.models._outage_models import OutageTimeline
@@ -337,8 +337,6 @@ def test_changelog_documents_mcp_rate_limit_work():
 
 
 # -- MCP write tools (ticket #139561) ----------------------------------------
-
-from hyperping.models._monitor_models import MonitorCreate  # noqa: E402
 
 
 _MONITOR_PAYLOAD = {
