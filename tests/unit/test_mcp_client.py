@@ -11,9 +11,14 @@ from hyperping._mcp_transport import MCP_URL
 from hyperping.exceptions import HyperpingRateLimitError
 from hyperping.mcp_client import HyperpingMcpClient
 from hyperping.models._integration_models import Integration
-from hyperping.models._monitor_models import Monitor
+from hyperping.models._monitor_models import Monitor, MonitorCreate
 from hyperping.models._observability_models import MonitorAnomaly, ProbeLogResponse
-from hyperping.models._oncall_models import EscalationPolicy, OnCallSchedule, TeamMember
+from hyperping.models._oncall_models import (
+    EscalationPolicy,
+    EscalationStep,
+    OnCallSchedule,
+    TeamMember,
+)
 from hyperping.models._outage_models import OutageTimeline
 from hyperping.models._reporting_models import (
     AlertHistory,
@@ -59,12 +64,18 @@ def test_list_on_call_schedules():
 def test_list_team_members_bare_array():
     client = make_client()
     client._transport.call_tool.return_value = [
-        {"uuid": "u1", "email": "a@b.com", "name": "A"},
+        {
+            "uuid": "u1",
+            "email": "a@b.com",
+            "name": "A",
+            "ssoPictureUrl": "https://sso.example.com/pic.png",
+        },
     ]
     result = client.list_team_members()
     assert len(result) == 1
     assert isinstance(result[0], TeamMember)
     assert result[0].email == "a@b.com"
+    assert result[0].sso_picture_url == "https://sso.example.com/pic.png"
     client._transport.call_tool.assert_called_once_with("list_team_members", {})
 
 
@@ -222,11 +233,30 @@ def test_get_on_call_schedule():
 def test_list_escalation_policies():
     client = make_client()
     client._transport.call_tool.return_value = [
-        {"uuid": "ep1", "name": "Default", "steps": []},
+        {
+            "uuid": "ep1",
+            "name": "Core-Escalation",
+            "steps": [
+                {
+                    "uuid": "step_1",
+                    "wait_before": 0,
+                    "channels": ["int_abc"],
+                    "tempId": "temp_123",
+                }
+            ],
+            "createdBy": None,
+            "createdAt": "2026-03-02T09:04:49.000Z",
+            "grouped_alerts_window": 300,
+            "grouped_alerts_enabled": 1,
+            "monitorCount": 69,
+        },
     ]
     result = client.list_escalation_policies()
     assert len(result) == 1
     assert isinstance(result[0], EscalationPolicy)
+    assert result[0].monitor_count == 69
+    assert isinstance(result[0].steps[0], EscalationStep)
+    assert result[0].steps[0].channels == ["int_abc"]
     client._transport.call_tool.assert_called_once_with("list_escalation_policies", {})
 
 
@@ -234,22 +264,45 @@ def test_get_escalation_policy():
     client = make_client()
     client._transport.call_tool.return_value = {
         "uuid": "ep1",
-        "name": "Default",
-        "steps": [],
+        "name": "Core-Escalation",
+        "steps": [
+            {
+                "uuid": "step_1",
+                "wait_before": 5,
+                "channels": ["int_xyz"],
+                "tempId": "temp_456",
+            }
+        ],
+        "createdBy": None,
+        "createdAt": "2026-03-02T09:04:49.000Z",
+        "grouped_alerts_window": 300,
+        "grouped_alerts_enabled": 1,
+        "monitorCount": 42,
     }
     result = client.get_escalation_policy("ep1")
     assert isinstance(result, EscalationPolicy)
+    assert result.monitor_count == 42
+    assert isinstance(result.steps[0], EscalationStep)
+    assert result.steps[0].wait_before == 5
     client._transport.call_tool.assert_called_once_with("get_escalation_policy", {"uuid": "ep1"})
 
 
 def test_list_integrations():
     client = make_client()
     client._transport.call_tool.return_value = [
-        {"uuid": "int1", "name": "Slack", "type": "slack", "active": True},
+        {
+            "uuid": "int1",
+            "name": "Teams",
+            "channel": "teams",
+            "createdBy": "usr_x",
+            "createdAt": "2026-03-03T15:00:59.000Z",
+        },
     ]
     result = client.list_integrations()
     assert len(result) == 1
     assert isinstance(result[0], Integration)
+    assert result[0].integration_type == "teams"
+    assert result[0].created_by == "usr_x"
     client._transport.call_tool.assert_called_once_with("list_integrations", {})
 
 
@@ -257,12 +310,19 @@ def test_get_integration():
     client = make_client()
     client._transport.call_tool.return_value = {
         "uuid": "int1",
-        "name": "Slack",
-        "type": "slack",
-        "active": True,
+        "name": "Teams",
+        "channel": "teams",
+        "createdBy": "admin@example.com",
+        "createdAt": "2026-03-03T15:00:59.000Z",
+        "region": None,
+        "metadata": None,
     }
     result = client.get_integration("int1")
     assert isinstance(result, Integration)
+    assert result.integration_type == "teams"
+    assert result.created_by == "admin@example.com"
+    assert result.created_at == "2026-03-03T15:00:59.000Z"
+    assert result.region is None
     client._transport.call_tool.assert_called_once_with("get_integration", {"uuid": "int1"})
 
 
@@ -278,9 +338,7 @@ def test_ensure_initialized_delegates_to_transport():
 def test_ensure_initialized_propagates_rate_limit():
     client = make_client()
     client._transport.initialize.side_effect = HyperpingRateLimitError(
-        "rate limited on initialize",
-        retry_after=30,
-        status_code=200,
+        "rate limited on initialize", retry_after=30, status_code=200,
     )
     with pytest.raises(HyperpingRateLimitError) as exc_info:
         client.ensure_initialized()
@@ -333,4 +391,81 @@ def test_changelog_documents_mcp_rate_limit_work():
     assert "ensure_initialized" in changelog, (
         "CHANGELOG must mention ensure_initialized() somewhere"
     )
-    assert "rate limit" in changelog.lower(), "CHANGELOG must mention rate-limit handling somewhere"
+    assert "rate limit" in changelog.lower(), (
+        "CHANGELOG must mention rate-limit handling somewhere"
+    )
+
+
+# -- MCP write tools (ticket #139561) ----------------------------------------
+
+
+_MONITOR_PAYLOAD = {
+    "uuid": "mon_abc",
+    "name": "My API",
+    "url": "https://api.example.com",
+    "protocol": "http",
+}
+
+
+def test_create_monitor():
+    client = make_client()
+    client._transport.call_tool.return_value = _MONITOR_PAYLOAD
+    monitor = MonitorCreate(name="My API", url="https://api.example.com")
+    result = client.create_monitor(monitor)
+    assert isinstance(result, Monitor)
+    assert result.uuid == "mon_abc"
+    client._transport.call_tool.assert_called_once_with(
+        "create_monitor", monitor.model_dump(exclude_none=True)
+    )
+
+
+def test_update_monitor():
+    client = make_client()
+    client._transport.call_tool.return_value = _MONITOR_PAYLOAD
+    result = client.update_monitor("mon_abc", name="New Name", check_frequency=60)
+    assert isinstance(result, Monitor)
+    client._transport.call_tool.assert_called_once_with(
+        "update_monitor", {"uuid": "mon_abc", "name": "New Name", "check_frequency": 60}
+    )
+
+
+def test_update_monitor_no_kwargs():
+    client = make_client()
+    client._transport.call_tool.return_value = _MONITOR_PAYLOAD
+    result = client.update_monitor("mon_abc")
+    assert isinstance(result, Monitor)
+    client._transport.call_tool.assert_called_once_with(
+        "update_monitor", {"uuid": "mon_abc"}
+    )
+
+
+def test_pause_monitor():
+    client = make_client()
+    client._transport.call_tool.return_value = {**_MONITOR_PAYLOAD, "paused": True}
+    result = client.pause_monitor("mon_abc")
+    assert isinstance(result, Monitor)
+    assert result.paused is True
+    client._transport.call_tool.assert_called_once_with(
+        "pause_monitor", {"uuid": "mon_abc"}
+    )
+
+
+def test_resume_monitor():
+    client = make_client()
+    client._transport.call_tool.return_value = {**_MONITOR_PAYLOAD, "paused": False}
+    result = client.resume_monitor("mon_abc")
+    assert isinstance(result, Monitor)
+    assert result.paused is False
+    client._transport.call_tool.assert_called_once_with(
+        "resume_monitor", {"uuid": "mon_abc"}
+    )
+
+
+def test_delete_monitor():
+    client = make_client()
+    client._transport.call_tool.return_value = None
+    result = client.delete_monitor("mon_abc")
+    assert result is None
+    client._transport.call_tool.assert_called_once_with(
+        "delete_monitor", {"uuid": "mon_abc"}
+    )
