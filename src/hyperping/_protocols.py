@@ -8,7 +8,10 @@ Not part of the public API.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from hyperping.client import RetryConfig
 
 
 class _ClientProtocol:
@@ -44,6 +47,8 @@ class _AsyncClientProtocol:
     The concrete implementation is provided by
     :class:`~hyperping._async_client.AsyncHyperpingClient`.
     """
+
+    retry_config: RetryConfig
 
     async def _request(
         self,
