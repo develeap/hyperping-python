@@ -111,3 +111,86 @@ class TestCreateServerFactory:
 
         server = create_mcp_server(client=mock_client, mcp_client=mock_mcp_client)
         assert len(server._tool_manager.list_tools()) == 62
+
+
+@pytest.fixture()
+def mock_async_client():
+    from hyperping._async_client import AsyncHyperpingClient
+
+    return MagicMock(spec=AsyncHyperpingClient)
+
+
+@pytest.fixture()
+def mock_async_mcp_client():
+    from hyperping._async_mcp_client import AsyncHyperpingMcpClient
+
+    return MagicMock(spec=AsyncHyperpingMcpClient)
+
+
+class TestCreateServerWithAsyncClient:
+    def test_create_server_with_async_client(self, mock_async_client, mock_async_mcp_client):
+        """create_mcp_server accepts AsyncHyperpingClient."""
+        from mcp.server.fastmcp import FastMCP
+
+        from hyperping.mcp_server import create_mcp_server
+
+        server = create_mcp_server(client=mock_async_client, mcp_client=mock_async_mcp_client)
+        assert isinstance(server, FastMCP)
+
+    def test_create_server_with_async_client_no_mcp_client(self, mock_async_client):
+        """create_mcp_server with only async REST client skips observability."""
+        from hyperping.mcp_server import create_mcp_server
+
+        server = create_mcp_server(client=mock_async_client)
+        tool_names = {t.name for t in server._tool_manager.list_tools()}
+        assert "list_monitors" in tool_names
+        assert "get_status_summary" not in tool_names
+
+    def test_async_client_registers_coroutine_tools(self, mock_async_client, mock_async_mcp_client):
+        """Tools registered with async client are coroutine functions."""
+        import asyncio
+
+        from hyperping.mcp_server import create_mcp_server
+
+        server = create_mcp_server(
+            client=mock_async_client, mcp_client=mock_async_mcp_client, tools=["monitors"]
+        )
+        tool = next(t for t in server._tool_manager.list_tools() if t.name == "list_monitors")
+        assert asyncio.iscoroutinefunction(tool.fn)
+
+    def test_sync_client_registers_sync_tools(self, mock_client, mock_mcp_client):
+        """Tools registered with sync client are plain functions."""
+        import asyncio
+
+        from hyperping.mcp_server import create_mcp_server
+
+        server = create_mcp_server(
+            client=mock_client, mcp_client=mock_mcp_client, tools=["monitors"]
+        )
+        tool = next(t for t in server._tool_manager.list_tools() if t.name == "list_monitors")
+        assert not asyncio.iscoroutinefunction(tool.fn)
+
+    def test_total_tool_count_with_async_client(self, mock_async_client, mock_async_mcp_client):
+        """Async client registers the same 62 tools as sync client."""
+        from hyperping.mcp_server import create_mcp_server
+
+        server = create_mcp_server(client=mock_async_client, mcp_client=mock_async_mcp_client)
+        assert len(server._tool_manager.list_tools()) == 62
+
+    def test_mixed_async_client_sync_mcp_client(self, mock_async_client, mock_mcp_client):
+        """Async REST client with sync MCP client: REST tools are async, observability sync."""
+        import asyncio
+
+        from hyperping.mcp_server import create_mcp_server
+
+        server = create_mcp_server(
+            client=mock_async_client,
+            mcp_client=mock_mcp_client,
+            tools=["monitors", "observability"],
+        )
+        list_m = next(t for t in server._tool_manager.list_tools() if t.name == "list_monitors")
+        status = next(
+            t for t in server._tool_manager.list_tools() if t.name == "get_status_summary"
+        )
+        assert asyncio.iscoroutinefunction(list_m.fn)
+        assert not asyncio.iscoroutinefunction(status.fn)
