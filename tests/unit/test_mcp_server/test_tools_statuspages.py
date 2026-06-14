@@ -43,3 +43,32 @@ class TestStatusPageTools:
 
         _call(server, "add_subscriber", status_page_id="sp1", email="a@b.com")
         mock_client.add_subscriber.assert_called_once_with("sp1", "a@b.com")
+
+
+async def _call_async(server, tool_name, **kwargs):
+    tool = next(t for t in server._tool_manager.list_tools() if t.name == tool_name)
+    return await tool.fn(**kwargs)
+
+
+@pytest.fixture()
+def mock_async_client():
+    from hyperping._async_client import AsyncHyperpingClient
+
+    return MagicMock(spec=AsyncHyperpingClient)
+
+
+@pytest.fixture()
+def async_server(mock_async_client):
+    from hyperping.mcp_server import create_mcp_server
+
+    return create_mcp_server(client=mock_async_client, tools=["statuspages"])
+
+
+class TestStatusPageToolsAsync:
+    async def test_list_status_pages_async_delegates(self, async_server, mock_async_client):
+        from unittest.mock import AsyncMock
+
+        mock_async_client.list_status_pages = AsyncMock(return_value=[])
+
+        await _call_async(async_server, "list_status_pages")
+        mock_async_client.list_status_pages.assert_called_once()
