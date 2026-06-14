@@ -22,12 +22,12 @@ def register_maintenance_tools(
 ) -> None:
     """Register maintenance window tools on *mcp*."""
     from hyperping._async_client import AsyncHyperpingClient
+    from hyperping.mcp_server._annotations import ACTION, DESTRUCTIVE, MUTATING, READ_ONLY
 
     if isinstance(client, AsyncHyperpingClient):
 
-        from hyperping.mcp_server._annotations import ACTION, DESTRUCTIVE, MUTATING, READ_ONLY
 
-    @mcp.tool(annotations=READ_ONLY)
+        @mcp.tool(annotations=READ_ONLY)
         async def list_maintenance(status: str | None = None) -> list[dict[str, Any]]:
             """List maintenance windows. Filter by status: scheduled, in_progress, completed."""
             return [m.model_dump() for m in await client.list_maintenance(status=status)]

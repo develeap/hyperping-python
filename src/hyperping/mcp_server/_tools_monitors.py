@@ -25,12 +25,12 @@ def register_monitor_tools(
 ) -> None:
     """Register monitor tools on *mcp*."""
     from hyperping._async_client import AsyncHyperpingClient
+    from hyperping.mcp_server._annotations import ACTION, DESTRUCTIVE, MUTATING, READ_ONLY
 
     if isinstance(client, AsyncHyperpingClient):
 
-        from hyperping.mcp_server._annotations import ACTION, DESTRUCTIVE, MUTATING, READ_ONLY
 
-    @mcp.tool(annotations=READ_ONLY)
+        @mcp.tool(annotations=READ_ONLY)
         async def list_monitors() -> list[dict[str, Any]]:
             """List all monitors in the account."""
             return [m.model_dump() for m in await client.list_monitors()]

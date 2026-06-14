@@ -22,12 +22,12 @@ def register_statuspage_tools(
 ) -> None:
     """Register status page tools on *mcp*."""
     from hyperping._async_client import AsyncHyperpingClient
+    from hyperping.mcp_server._annotations import ACTION, DESTRUCTIVE, MUTATING, READ_ONLY
 
     if isinstance(client, AsyncHyperpingClient):
 
-        from hyperping.mcp_server._annotations import ACTION, DESTRUCTIVE, MUTATING, READ_ONLY
 
-    @mcp.tool(annotations=READ_ONLY)
+        @mcp.tool(annotations=READ_ONLY)
         async def list_status_pages(search: str | None = None) -> list[dict[str, Any]]:
             """List all status pages. Optionally filter by name or subdomain."""
             return [p.model_dump() for p in await client.list_status_pages(search=search)]

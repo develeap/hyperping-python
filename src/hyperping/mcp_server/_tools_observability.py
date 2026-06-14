@@ -24,12 +24,12 @@ def register_observability_tools(
 ) -> None:
     """Register observability tools on *mcp*."""
     from hyperping._async_mcp_client import AsyncHyperpingMcpClient
+    from hyperping.mcp_server._annotations import READ_ONLY
 
     if isinstance(mcp_client, AsyncHyperpingMcpClient):
 
-        from hyperping.mcp_server._annotations import READ_ONLY
 
-    @mcp.tool(annotations=READ_ONLY)
+        @mcp.tool(annotations=READ_ONLY)
         async def get_status_summary() -> dict[str, Any]:
             """Get aggregate monitor status counts (up, down, paused, total)."""
             return (await mcp_client.get_status_summary()).model_dump()
