@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
 
+    from hyperping._async_client import AsyncHyperpingClient
+    from hyperping._async_mcp_client import AsyncHyperpingMcpClient
     from hyperping.client import HyperpingClient
     from hyperping.mcp_client import HyperpingMcpClient
 
@@ -30,8 +32,8 @@ _VALID_GROUPS: frozenset[str] = frozenset(
 
 def register_tools(
     mcp: FastMCP,
-    client: HyperpingClient,
-    mcp_client: HyperpingMcpClient | None,
+    client: HyperpingClient | AsyncHyperpingClient,
+    mcp_client: HyperpingMcpClient | AsyncHyperpingMcpClient | None,
     groups: list[str] | None,
 ) -> None:
     """Register tool groups on *mcp*.
