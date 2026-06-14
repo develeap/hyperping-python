@@ -13,6 +13,7 @@ import httpx2 as httpx
 from pydantic import SecretStr
 
 from hyperping._internals import validate_base_url
+from hyperping._otel import get_tracer, record_error, start_rpc_span
 from hyperping._version import __version__
 from hyperping.endpoints import MCP_URL
 from hyperping.exceptions import (
@@ -22,7 +23,6 @@ from hyperping.exceptions import (
     HyperpingRateLimitError,
     HyperpingValidationError,
 )
-from hyperping._otel import get_tracer, record_error, start_rpc_span
 
 _PROTOCOL_VERSION = "2025-03-26"
 
@@ -294,7 +294,8 @@ class McpTransport:
                     record_error(span, exc)
                     raise
             else:
-                record_error(span, last_exc)
+                if last_exc is not None:
+                    record_error(span, last_exc)
                 raise last_exc  # type: ignore[misc]
 
             if result is None:

@@ -41,6 +41,7 @@ from hyperping._internals import (
     sanitize_for_log,
     validate_base_url,
 )
+from hyperping._otel import get_tracer, record_error, start_request_span
 from hyperping.client import _ENDPOINT_BREAKERS_MAX, DEFAULT_RETRY_CONFIG, RetryConfig
 from hyperping.endpoints import API_BASE, Endpoint
 from hyperping.exceptions import (
@@ -48,7 +49,6 @@ from hyperping.exceptions import (
     HyperpingAuthError,
     HyperpingRateLimitError,
 )
-from hyperping._otel import get_tracer, record_error, start_request_span
 
 logger = logging.getLogger(__name__)
 
@@ -451,12 +451,14 @@ class AsyncHyperpingClient(
                         continue
                     breaker.record_failure()
                     if isinstance(e, httpx.TimeoutException):
-                        exc = HyperpingAPIError(f"Request timeout after {max_attempts} attempts")
-                        record_error(span, exc)
-                        raise exc from e
-                    exc = HyperpingAPIError(f"Request failed: {e}")
-                    record_error(span, exc)
-                    raise exc from e
+                        api_exc = HyperpingAPIError(
+                            f"Request timeout after {max_attempts} attempts"
+                        )
+                        record_error(span, api_exc)
+                        raise api_exc from e
+                    api_exc = HyperpingAPIError(f"Request failed: {e}")
+                    record_error(span, api_exc)
+                    raise api_exc from e
 
             raise HyperpingAPIError(  # pragma: no cover
                 "Request failed after all retries"

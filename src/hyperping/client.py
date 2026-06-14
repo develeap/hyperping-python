@@ -37,6 +37,7 @@ from hyperping._internals import (
 )
 from hyperping._maintenance_mixin import MaintenanceMixin
 from hyperping._monitors_mixin import MonitorsMixin
+from hyperping._otel import get_tracer, record_error, start_request_span
 from hyperping._outages_mixin import OutagesMixin
 from hyperping._statuspages_mixin import StatusPagesMixin
 from hyperping.endpoints import API_BASE, Endpoint
@@ -47,7 +48,6 @@ from hyperping.exceptions import (
     HyperpingRateLimitError,
     HyperpingValidationError,
 )
-from hyperping._otel import get_tracer, record_error, start_request_span
 
 logger = logging.getLogger(__name__)
 
@@ -535,12 +535,14 @@ class HyperpingClient(
                         continue
                     breaker.record_failure()
                     if isinstance(e, httpx.TimeoutException):
-                        exc = HyperpingAPIError(f"Request timeout after {max_attempts} attempts")
-                        record_error(span, exc)
-                        raise exc from e
-                    exc = HyperpingAPIError(f"Request failed: {e}")
-                    record_error(span, exc)
-                    raise exc from e
+                        api_exc = HyperpingAPIError(
+                            f"Request timeout after {max_attempts} attempts"
+                        )
+                        record_error(span, api_exc)
+                        raise api_exc from e
+                    api_exc = HyperpingAPIError(f"Request failed: {e}")
+                    record_error(span, api_exc)
+                    raise api_exc from e
 
             # Should not reach here, but just in case
             raise HyperpingAPIError(  # pragma: no cover
