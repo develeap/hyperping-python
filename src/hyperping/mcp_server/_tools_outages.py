@@ -12,52 +12,113 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
 
+    from hyperping._async_client import AsyncHyperpingClient
     from hyperping.client import HyperpingClient
 
 
-def register_outage_tools(mcp: FastMCP, client: HyperpingClient) -> None:
+def register_outage_tools(
+    mcp: FastMCP,
+    client: HyperpingClient | AsyncHyperpingClient,
+) -> None:
     """Register outage tools on *mcp*."""
+    from hyperping._async_client import AsyncHyperpingClient
 
-    @mcp.tool()
-    def list_outages(
-        status: str = "all",
-        outage_type: str = "all",
-    ) -> list[dict[str, Any]]:
-        """List outages. status: all, ongoing, resolved. outage_type: all, manual, monitor."""
-        return [o.model_dump() for o in client.list_outages(status=status, outage_type=outage_type)]
+    if isinstance(client, AsyncHyperpingClient):
 
-    @mcp.tool()
-    def get_outage(outage_id: str) -> dict[str, Any]:
-        """Get a single outage by UUID."""
-        return client.get_outage(outage_id).model_dump()
+        from hyperping.mcp_server._annotations import ACTION, DESTRUCTIVE, MUTATING, READ_ONLY
 
-    @mcp.tool()
-    def create_outage(monitor_uuid: str) -> dict[str, Any]:
-        """This will create a manual outage for a monitor."""
-        return client.create_outage(monitor_uuid).model_dump()
+    @mcp.tool(annotations=READ_ONLY)
+        async def list_outages(
+            status: str = "all",
+            outage_type: str = "all",
+        ) -> list[dict[str, Any]]:
+            """List outages. status: all, ongoing, resolved. outage_type: all, manual, monitor."""
+            return [
+                o.model_dump()
+                for o in await client.list_outages(status=status, outage_type=outage_type)
+            ]
 
-    @mcp.tool()
-    def acknowledge_outage(outage_id: str, message: str | None = None) -> dict[str, Any]:
-        """Acknowledge an outage with an optional message."""
-        return client.acknowledge_outage(outage_id, message=message).model_dump()
+        @mcp.tool(annotations=READ_ONLY)
+        async def get_outage(outage_id: str) -> dict[str, Any]:
+            """Get a single outage by UUID."""
+            return (await client.get_outage(outage_id)).model_dump()
 
-    @mcp.tool()
-    def resolve_outage(outage_id: str, message: str | None = None) -> dict[str, Any]:
-        """This will resolve an outage with an optional message."""
-        return client.resolve_outage(outage_id, message=message).model_dump()
+        @mcp.tool(annotations=MUTATING)
+        async def create_outage(monitor_uuid: str) -> dict[str, Any]:
+            """This will create a manual outage for a monitor."""
+            return (await client.create_outage(monitor_uuid)).model_dump()
 
-    @mcp.tool()
-    def escalate_outage(outage_id: str) -> dict[str, Any]:
-        """Escalate an outage to the next on-call tier."""
-        return client.escalate_outage(outage_id).model_dump()
+        @mcp.tool(annotations=ACTION)
+        async def acknowledge_outage(outage_id: str, message: str | None = None) -> dict[str, Any]:
+            """Acknowledge an outage with an optional message."""
+            return (await client.acknowledge_outage(outage_id, message=message)).model_dump()
 
-    @mcp.tool()
-    def unacknowledge_outage(outage_id: str) -> dict[str, Any]:
-        """Unacknowledge an outage."""
-        return client.unacknowledge_outage(outage_id).model_dump()
+        @mcp.tool(annotations=DESTRUCTIVE)
+        async def resolve_outage(outage_id: str, message: str | None = None) -> dict[str, Any]:
+            """This will resolve an outage with an optional message."""
+            return (await client.resolve_outage(outage_id, message=message)).model_dump()
 
-    @mcp.tool()
-    def delete_outage(outage_id: str) -> dict[str, Any]:
-        """This will permanently delete an outage record."""
-        client.delete_outage(outage_id)
-        return {"success": True}
+        @mcp.tool(annotations=DESTRUCTIVE)
+        async def escalate_outage(outage_id: str) -> dict[str, Any]:
+            """Escalate an outage to the next on-call tier."""
+            return (await client.escalate_outage(outage_id)).model_dump()
+
+        @mcp.tool(annotations=ACTION)
+        async def unacknowledge_outage(outage_id: str) -> dict[str, Any]:
+            """Unacknowledge an outage."""
+            return (await client.unacknowledge_outage(outage_id)).model_dump()
+
+        @mcp.tool(annotations=DESTRUCTIVE)
+        async def delete_outage(outage_id: str) -> dict[str, Any]:
+            """This will permanently delete an outage record."""
+            await client.delete_outage(outage_id)
+            return {"success": True}
+
+    else:
+
+        @mcp.tool(annotations=READ_ONLY)
+        def list_outages(
+            status: str = "all",
+            outage_type: str = "all",
+        ) -> list[dict[str, Any]]:
+            """List outages. status: all, ongoing, resolved. outage_type: all, manual, monitor."""
+            return [
+                o.model_dump()
+                for o in client.list_outages(status=status, outage_type=outage_type)
+            ]
+
+        @mcp.tool(annotations=READ_ONLY)
+        def get_outage(outage_id: str) -> dict[str, Any]:
+            """Get a single outage by UUID."""
+            return client.get_outage(outage_id).model_dump()
+
+        @mcp.tool(annotations=MUTATING)
+        def create_outage(monitor_uuid: str) -> dict[str, Any]:
+            """This will create a manual outage for a monitor."""
+            return client.create_outage(monitor_uuid).model_dump()
+
+        @mcp.tool(annotations=ACTION)
+        def acknowledge_outage(outage_id: str, message: str | None = None) -> dict[str, Any]:
+            """Acknowledge an outage with an optional message."""
+            return client.acknowledge_outage(outage_id, message=message).model_dump()
+
+        @mcp.tool(annotations=DESTRUCTIVE)
+        def resolve_outage(outage_id: str, message: str | None = None) -> dict[str, Any]:
+            """This will resolve an outage with an optional message."""
+            return client.resolve_outage(outage_id, message=message).model_dump()
+
+        @mcp.tool(annotations=DESTRUCTIVE)
+        def escalate_outage(outage_id: str) -> dict[str, Any]:
+            """Escalate an outage to the next on-call tier."""
+            return client.escalate_outage(outage_id).model_dump()
+
+        @mcp.tool(annotations=ACTION)
+        def unacknowledge_outage(outage_id: str) -> dict[str, Any]:
+            """Unacknowledge an outage."""
+            return client.unacknowledge_outage(outage_id).model_dump()
+
+        @mcp.tool(annotations=DESTRUCTIVE)
+        def delete_outage(outage_id: str) -> dict[str, Any]:
+            """This will permanently delete an outage record."""
+            client.delete_outage(outage_id)
+            return {"success": True}
