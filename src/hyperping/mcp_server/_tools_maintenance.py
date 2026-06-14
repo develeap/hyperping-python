@@ -22,10 +22,9 @@ def register_maintenance_tools(
 ) -> None:
     """Register maintenance window tools on *mcp*."""
     from hyperping._async_client import AsyncHyperpingClient
-    from hyperping.mcp_server._annotations import ACTION, DESTRUCTIVE, MUTATING, READ_ONLY
+    from hyperping.mcp_server._annotations import DESTRUCTIVE, MUTATING, READ_ONLY
 
     if isinstance(client, AsyncHyperpingClient):
-
 
         @mcp.tool(annotations=READ_ONLY)
         async def list_maintenance(status: str | None = None) -> list[dict[str, Any]]:
@@ -176,7 +175,9 @@ def register_maintenance_tools(
                 fields["end_date"] = end_date
             if monitors is not None:
                 fields["monitors"] = monitors
-            return client.update_maintenance(maintenance_id, MaintenanceUpdate(**fields)).model_dump()
+            return client.update_maintenance(
+                maintenance_id, MaintenanceUpdate(**fields)
+            ).model_dump()
 
         @mcp.tool(annotations=DESTRUCTIVE)
         def delete_maintenance(maintenance_id: str) -> dict[str, Any]:

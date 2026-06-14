@@ -21,10 +21,9 @@ def register_incident_tools(
 ) -> None:
     """Register incident tools on *mcp*."""
     from hyperping._async_client import AsyncHyperpingClient
-    from hyperping.mcp_server._annotations import ACTION, DESTRUCTIVE, MUTATING, READ_ONLY
+    from hyperping.mcp_server._annotations import DESTRUCTIVE, MUTATING, READ_ONLY
 
     if isinstance(client, AsyncHyperpingClient):
-
 
         @mcp.tool(annotations=READ_ONLY)
         async def list_incidents(status: str | None = None) -> list[dict[str, Any]]:

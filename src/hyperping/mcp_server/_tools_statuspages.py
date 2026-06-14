@@ -22,10 +22,9 @@ def register_statuspage_tools(
 ) -> None:
     """Register status page tools on *mcp*."""
     from hyperping._async_client import AsyncHyperpingClient
-    from hyperping.mcp_server._annotations import ACTION, DESTRUCTIVE, MUTATING, READ_ONLY
+    from hyperping.mcp_server._annotations import DESTRUCTIVE, MUTATING, READ_ONLY
 
     if isinstance(client, AsyncHyperpingClient):
-
 
         @mcp.tool(annotations=READ_ONLY)
         async def list_status_pages(search: str | None = None) -> list[dict[str, Any]]:
@@ -169,7 +168,9 @@ def register_statuspage_tools(
                 fields["public"] = public
             if monitors is not None:
                 fields["monitors"] = monitors
-            return client.update_status_page(status_page_id, StatusPageUpdate(**fields)).model_dump()
+            return client.update_status_page(
+                status_page_id, StatusPageUpdate(**fields)
+            ).model_dump()
 
         @mcp.tool(annotations=DESTRUCTIVE)
         def delete_status_page(status_page_id: str) -> dict[str, Any]:
@@ -185,9 +186,7 @@ def register_statuspage_tools(
             """List subscribers for a status page. subscriber_type: all, email, sms, slack."""
             return [
                 s.model_dump()
-                for s in client.list_subscribers(
-                    status_page_id, subscriber_type=subscriber_type
-                )
+                for s in client.list_subscribers(status_page_id, subscriber_type=subscriber_type)
             ]
 
         @mcp.tool(annotations=MUTATING)
