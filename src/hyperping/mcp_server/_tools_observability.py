@@ -28,7 +28,6 @@ def register_observability_tools(
 
     if isinstance(mcp_client, AsyncHyperpingMcpClient):
 
-
         @mcp.tool(annotations=READ_ONLY)
         async def get_status_summary() -> dict[str, Any]:
             """Get aggregate monitor status counts (up, down, paused, total)."""

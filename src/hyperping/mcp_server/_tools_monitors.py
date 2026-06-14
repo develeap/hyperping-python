@@ -29,7 +29,6 @@ def register_monitor_tools(
 
     if isinstance(client, AsyncHyperpingClient):
 
-
         @mcp.tool(annotations=READ_ONLY)
         async def list_monitors() -> list[dict[str, Any]]:
             """List all monitors in the account."""

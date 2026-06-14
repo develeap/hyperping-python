@@ -25,7 +25,6 @@ def register_healthcheck_tools(
 
     if isinstance(client, AsyncHyperpingClient):
 
-
         @mcp.tool(annotations=READ_ONLY)
         async def list_healthchecks() -> list[dict[str, Any]]:
             """List all healthchecks (push-based cron/heartbeat monitors)."""

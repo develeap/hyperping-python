@@ -26,7 +26,6 @@ def register_outage_tools(
 
     if isinstance(client, AsyncHyperpingClient):
 
-
         @mcp.tool(annotations=READ_ONLY)
         async def list_outages(
             status: str = "all",
@@ -83,8 +82,7 @@ def register_outage_tools(
         ) -> list[dict[str, Any]]:
             """List outages. status: all, ongoing, resolved. outage_type: all, manual, monitor."""
             return [
-                o.model_dump()
-                for o in client.list_outages(status=status, outage_type=outage_type)
+                o.model_dump() for o in client.list_outages(status=status, outage_type=outage_type)
             ]
 
         @mcp.tool(annotations=READ_ONLY)
