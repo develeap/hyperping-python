@@ -46,3 +46,32 @@ class TestOutageTools:
 
         _call(server, "escalate_outage", outage_id="out1")
         mock_client.escalate_outage.assert_called_once_with("out1")
+
+
+async def _call_async(server, tool_name, **kwargs):
+    tool = next(t for t in server._tool_manager.list_tools() if t.name == tool_name)
+    return await tool.fn(**kwargs)
+
+
+@pytest.fixture()
+def mock_async_client():
+    from hyperping._async_client import AsyncHyperpingClient
+
+    return MagicMock(spec=AsyncHyperpingClient)
+
+
+@pytest.fixture()
+def async_server(mock_async_client):
+    from hyperping.mcp_server import create_mcp_server
+
+    return create_mcp_server(client=mock_async_client, tools=["outages"])
+
+
+class TestOutageToolsAsync:
+    async def test_list_outages_async_delegates(self, async_server, mock_async_client):
+        from unittest.mock import AsyncMock
+
+        mock_async_client.list_outages = AsyncMock(return_value=[])
+
+        await _call_async(async_server, "list_outages")
+        mock_async_client.list_outages.assert_called_once()

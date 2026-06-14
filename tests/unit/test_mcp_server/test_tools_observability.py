@@ -63,3 +63,38 @@ class TestObservabilityTools:
         mock_client = MagicMock(spec=HyperpingClient)
         server = create_mcp_server(client=mock_client, tools=["observability"])
         assert len(server._tool_manager.list_tools()) == 0
+
+
+async def _call_async(server, tool_name, **kwargs):
+    tool = next(t for t in server._tool_manager.list_tools() if t.name == tool_name)
+    return await tool.fn(**kwargs)
+
+
+@pytest.fixture()
+def mock_async_mcp_client():
+    from hyperping._async_mcp_client import AsyncHyperpingMcpClient
+
+    return MagicMock(spec=AsyncHyperpingMcpClient)
+
+
+@pytest.fixture()
+def async_server(mock_async_mcp_client):
+    from hyperping.client import HyperpingClient
+    from hyperping.mcp_server import create_mcp_server
+
+    mock_client = MagicMock(spec=HyperpingClient)
+    return create_mcp_server(
+        client=mock_client, mcp_client=mock_async_mcp_client, tools=["observability"]
+    )
+
+
+class TestObservabilityToolsAsync:
+    async def test_get_status_summary_async_delegates(self, async_server, mock_async_mcp_client):
+        from unittest.mock import AsyncMock
+
+        summary = MagicMock()
+        summary.model_dump.return_value = {"total": 5, "up": 4, "down": 1}
+        mock_async_mcp_client.get_status_summary = AsyncMock(return_value=summary)
+
+        await _call_async(async_server, "get_status_summary")
+        mock_async_mcp_client.get_status_summary.assert_called_once()
