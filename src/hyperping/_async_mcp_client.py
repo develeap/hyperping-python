@@ -21,7 +21,7 @@ from pydantic import SecretStr
 from hyperping._async_mcp_transport import AsyncMcpTransport
 from hyperping.endpoints import MCP_URL
 from hyperping.models._integration_models import Integration
-from hyperping.models._monitor_models import Monitor
+from hyperping.models._monitor_models import Monitor, MonitorCreate
 from hyperping.models._observability_models import MonitorAnomaly, ProbeLogResponse
 from hyperping.models._oncall_models import EscalationPolicy, OnCallSchedule, TeamMember
 from hyperping.models._outage_models import OutageTimeline
@@ -270,3 +270,52 @@ class AsyncHyperpingMcpClient:
         data = await self._call("search_monitors_by_name", {"query": query})
         raw = data if isinstance(data, list) else []
         return [Monitor.model_validate(m) for m in raw]
+
+    async def create_monitor(self, monitor: MonitorCreate) -> Monitor:
+        """Create a new monitor.
+
+        Args:
+            monitor: Monitor configuration.
+        """
+        return Monitor.model_validate(
+            await self._call("create_monitor", monitor.model_dump(exclude_none=True))
+        )
+
+    async def update_monitor(self, monitor_uuid: str, **kwargs: Any) -> Monitor:
+        """Update an existing monitor.
+
+        Args:
+            monitor_uuid: Monitor UUID.
+            **kwargs: Fields to update.
+        """
+        return Monitor.model_validate(
+            await self._call("update_monitor", {"uuid": monitor_uuid, **kwargs})
+        )
+
+    async def pause_monitor(self, monitor_uuid: str) -> Monitor:
+        """Pause a monitor.
+
+        Args:
+            monitor_uuid: Monitor UUID.
+        """
+        return Monitor.model_validate(
+            await self._call("pause_monitor", {"uuid": monitor_uuid})
+        )
+
+    async def resume_monitor(self, monitor_uuid: str) -> Monitor:
+        """Resume a paused monitor.
+
+        Args:
+            monitor_uuid: Monitor UUID.
+        """
+        return Monitor.model_validate(
+            await self._call("resume_monitor", {"uuid": monitor_uuid})
+        )
+
+    async def delete_monitor(self, monitor_uuid: str) -> None:
+        """Delete a monitor.
+
+        Args:
+            monitor_uuid: Monitor UUID.
+        """
+        await self._call("delete_monitor", {"uuid": monitor_uuid})
