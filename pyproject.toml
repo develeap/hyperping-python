@@ -32,6 +32,7 @@ dependencies = [
 
 [project.optional-dependencies]
 cli = ["typer[all]>=0.12,<1.0"]
+mcp-server = ["mcp>=1.27,<2"]
 dev = [
     "pytest>=9.0.3",
     "pytest-cov",
@@ -41,6 +42,7 @@ dev = [
     "pydantic",
     "pip-audit>=2.7",
     "typer[all]>=0.12,<1.0",
+    "mcp>=1.27,<2",
 ]
 
 [project.scripts]
