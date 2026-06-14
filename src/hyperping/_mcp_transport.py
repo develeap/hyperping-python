@@ -13,6 +13,7 @@ import httpx2 as httpx
 from pydantic import SecretStr
 
 from hyperping._internals import validate_base_url
+from hyperping._otel import get_tracer, record_error, start_rpc_span
 from hyperping._version import __version__
 from hyperping.endpoints import MCP_URL
 from hyperping.exceptions import (
@@ -84,6 +85,7 @@ class McpTransport:
         self._init_blocked_status_code: int = 200
         self._init_result: dict[str, Any] = {}
         self._max_retries = max_retries
+        self._tracer = get_tracer()
 
     def _next_id(self) -> int:
         with self._lock:
@@ -274,45 +276,49 @@ class McpTransport:
         """
         self.initialize()
 
-        last_exc: Exception | None = None
-        for attempt in range(self._max_retries + 1):
+        with start_rpc_span(self._tracer, "tools/call", self._url) as span:
+            last_exc: Exception | None = None
+            for attempt in range(self._max_retries + 1):
+                try:
+                    result = self._send_rpc(
+                        "tools/call",
+                        {"name": tool_name, "arguments": arguments or {}},
+                    )
+                    break
+                except HyperpingAPIError as exc:
+                    if exc.status_code and exc.status_code in (500, 502, 503, 504):
+                        last_exc = exc
+                        if attempt < self._max_retries:
+                            time.sleep(min(2**attempt, 10))
+                            continue
+                    record_error(span, exc)
+                    raise
+            else:
+                if last_exc is not None:
+                    record_error(span, last_exc)
+                raise last_exc  # type: ignore[misc]
+
+            if result is None:
+                return None
+
+            content = result.get("result", {}).get("content", [])
+            if not content:
+                return None
+
+            text = content[0].get("text", "")
+            if not text:
+                return None
+
             try:
-                result = self._send_rpc(
-                    "tools/call",
-                    {"name": tool_name, "arguments": arguments or {}},
-                )
-                break
-            except HyperpingAPIError as exc:
-                if exc.status_code and exc.status_code in (500, 502, 503, 504):
-                    last_exc = exc
-                    if attempt < self._max_retries:
-                        time.sleep(min(2**attempt, 10))
-                        continue
-                raise
-        else:
-            raise last_exc  # type: ignore[misc]
-
-        if result is None:
-            return None
-
-        content = result.get("result", {}).get("content", [])
-        if not content:
-            return None
-
-        text = content[0].get("text", "")
-        if not text:
-            return None
-
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError as exc:
-            # Server-controlled ``text`` may carry PII; drop it instead of
-            # embedding the first 500 bytes into the exception.
-            raise HyperpingAPIError(
-                f"Failed to parse MCP tool response: {exc}",
-                status_code=200,
-                response_body=None,
-            ) from exc
+                return json.loads(text)
+            except json.JSONDecodeError as exc:
+                # Server-controlled ``text`` may carry PII; drop it instead of
+                # embedding the first 500 bytes into the exception.
+                raise HyperpingAPIError(
+                    f"Failed to parse MCP tool response: {exc}",
+                    status_code=200,
+                    response_body=None,
+                ) from exc
 
     def close(self) -> None:
         self._client.close()

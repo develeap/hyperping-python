@@ -32,6 +32,9 @@ dependencies = [
 
 [project.optional-dependencies]
 cli = ["typer[all]>=0.12,<1.0"]
+otel = [
+    "opentelemetry-api>=1.20",
+]
 dev = [
     "pytest>=9.0.3",
     "pytest-cov",
@@ -41,6 +44,8 @@ dev = [
     "pydantic",
     "pip-audit>=2.7",
     "typer[all]>=0.12,<1.0",
+    "opentelemetry-api>=1.20",
+    "opentelemetry-sdk>=1.20",
 ]
 
 [project.scripts]
