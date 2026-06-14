@@ -22,6 +22,7 @@ from hyperping.exceptions import (
     HyperpingRateLimitError,
     HyperpingValidationError,
 )
+from hyperping._otel import get_tracer, record_error, start_rpc_span
 
 _PROTOCOL_VERSION = "2025-03-26"
 
@@ -84,6 +85,7 @@ class AsyncMcpTransport:
         self._init_blocked_status_code: int = 200
         self._init_result: dict[str, Any] = {}
         self._max_retries = max_retries
+        self._tracer = get_tracer()
 
     async def _next_id(self) -> int:
         async with self._lock:
@@ -273,44 +275,48 @@ class AsyncMcpTransport:
         """
         await self.initialize()
 
-        last_exc: Exception | None = None
-        for attempt in range(self._max_retries + 1):
+        with start_rpc_span(self._tracer, "tools/call", self._url) as span:
+            last_exc: Exception | None = None
+            for attempt in range(self._max_retries + 1):
+                try:
+                    result = await self._send_rpc(
+                        "tools/call",
+                        {"name": tool_name, "arguments": arguments or {}},
+                    )
+                    break
+                except HyperpingAPIError as exc:
+                    if exc.status_code and exc.status_code in (500, 502, 503, 504):
+                        last_exc = exc
+                        if attempt < self._max_retries:
+                            await asyncio.sleep(min(2**attempt, 10))
+                            continue
+                    record_error(span, exc)
+                    raise
+            else:
+                record_error(span, last_exc)
+                raise last_exc  # type: ignore[misc]
+
+            if result is None:
+                return None
+
+            content = result.get("result", {}).get("content", [])
+            if not content:
+                return None
+
+            text = content[0].get("text", "")
+            if not text:
+                return None
+
             try:
-                result = await self._send_rpc(
-                    "tools/call",
-                    {"name": tool_name, "arguments": arguments or {}},
-                )
-                break
-            except HyperpingAPIError as exc:
-                if exc.status_code and exc.status_code in (500, 502, 503, 504):
-                    last_exc = exc
-                    if attempt < self._max_retries:
-                        await asyncio.sleep(min(2**attempt, 10))
-                        continue
-                raise
-        else:
-            raise last_exc  # type: ignore[misc]
-        if result is None:
-            return None
-
-        content = result.get("result", {}).get("content", [])
-        if not content:
-            return None
-
-        text = content[0].get("text", "")
-        if not text:
-            return None
-
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError as exc:
-            # Server-controlled ``text`` may carry PII; drop it instead of
-            # embedding the first 500 bytes into the exception.
-            raise HyperpingAPIError(
-                f"Failed to parse MCP tool response: {exc}",
-                status_code=200,
-                response_body=None,
-            ) from exc
+                return json.loads(text)
+            except json.JSONDecodeError as exc:
+                # Server-controlled ``text`` may carry PII; drop it instead of
+                # embedding the first 500 bytes into the exception.
+                raise HyperpingAPIError(
+                    f"Failed to parse MCP tool response: {exc}",
+                    status_code=200,
+                    response_body=None,
+                ) from exc
 
     async def close(self) -> None:
         await self._client.aclose()

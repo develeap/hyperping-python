@@ -47,6 +47,7 @@ from hyperping.exceptions import (
     HyperpingRateLimitError,
     HyperpingValidationError,
 )
+from hyperping._otel import get_tracer, record_error, start_request_span
 
 logger = logging.getLogger(__name__)
 
@@ -167,6 +168,7 @@ class HyperpingClient(
             },
             timeout=self.timeout,
         )
+        self._tracer = get_tracer()
 
     def __repr__(self) -> str:
         return f"HyperpingClient(base_url={self.base_url!r})"
@@ -471,70 +473,79 @@ class HyperpingClient(
         Raises:
             HyperpingAPIError: On API errors after retries exhausted
         """
-        breaker = self._breaker_for(path)
-        if not breaker.call_allowed():
-            raise HyperpingAPIError(self._circuit_open_message(breaker, path))
+        with start_request_span(self._tracer, method, path, self.base_url) as span:
+            breaker = self._breaker_for(path)
+            if not breaker.call_allowed():
+                raise HyperpingAPIError(self._circuit_open_message(breaker, path))
 
-        last_exception: Exception | None = None
-        delay = self.retry_config.initial_delay
-        max_attempts = self.retry_config.max_retries + 1
+            last_exception: Exception | None = None
+            delay = self.retry_config.initial_delay
+            max_attempts = self.retry_config.max_retries + 1
 
-        for attempt in range(max_attempts):
-            try:
-                result = self._execute_single_attempt(method, path, json, params)
+            for attempt in range(max_attempts):
+                try:
+                    result = self._execute_single_attempt(method, path, json, params)
 
-                if not isinstance(result, httpx.Response):
-                    return result
+                    if not isinstance(result, httpx.Response):
+                        return result
 
-                response = result
-                if self._should_retry(response.status_code, attempt):
-                    sleep_time = self._compute_sleep_time(response, delay)
-                    logger.warning(
-                        "Retrying after %.2fs due to %d (attempt %d/%d)",
-                        sleep_time,
-                        response.status_code,
-                        attempt + 1,
-                        max_attempts,
-                    )
-                    time.sleep(sleep_time)
-                    delay = min(
-                        delay * self.retry_config.backoff_factor,
-                        self.retry_config.max_delay,
-                    )
-                    continue
+                    response = result
+                    if self._should_retry(response.status_code, attempt):
+                        sleep_time = self._compute_sleep_time(response, delay)
+                        logger.warning(
+                            "Retrying after %.2fs due to %d (attempt %d/%d)",
+                            sleep_time,
+                            response.status_code,
+                            attempt + 1,
+                            max_attempts,
+                        )
+                        time.sleep(sleep_time)
+                        delay = min(
+                            delay * self.retry_config.backoff_factor,
+                            self.retry_config.max_delay,
+                        )
+                        continue
 
-                # Only trip circuit breaker on server errors, not client errors
-                if response.status_code >= 500:
+                    # Only trip circuit breaker on server errors, not client errors
+                    if response.status_code >= 500:
+                        breaker.record_failure()
+                    try:
+                        self._handle_response_error(response)
+                    except HyperpingAPIError as exc:
+                        record_error(span, exc)
+                        raise
+
+                except (httpx.TimeoutException, httpx.RequestError) as e:
+                    last_exception = e
+                    if attempt < self.retry_config.max_retries:
+                        label = "timeout" if isinstance(e, httpx.TimeoutException) else str(e)
+                        sleep_time = delay + random.uniform(0, delay * 0.25)
+                        logger.warning(
+                            "Request %s, retrying after %.2fs (attempt %d/%d)",
+                            label,
+                            sleep_time,
+                            attempt + 1,
+                            max_attempts,
+                        )
+                        time.sleep(sleep_time)
+                        delay = min(
+                            delay * self.retry_config.backoff_factor,
+                            self.retry_config.max_delay,
+                        )
+                        continue
                     breaker.record_failure()
-                self._handle_response_error(response)
+                    if isinstance(e, httpx.TimeoutException):
+                        exc = HyperpingAPIError(f"Request timeout after {max_attempts} attempts")
+                        record_error(span, exc)
+                        raise exc from e
+                    exc = HyperpingAPIError(f"Request failed: {e}")
+                    record_error(span, exc)
+                    raise exc from e
 
-            except (httpx.TimeoutException, httpx.RequestError) as e:
-                last_exception = e
-                if attempt < self.retry_config.max_retries:
-                    label = "timeout" if isinstance(e, httpx.TimeoutException) else str(e)
-                    sleep_time = delay + random.uniform(0, delay * 0.25)
-                    logger.warning(
-                        "Request %s, retrying after %.2fs (attempt %d/%d)",
-                        label,
-                        sleep_time,
-                        attempt + 1,
-                        max_attempts,
-                    )
-                    time.sleep(sleep_time)
-                    delay = min(
-                        delay * self.retry_config.backoff_factor,
-                        self.retry_config.max_delay,
-                    )
-                    continue
-                breaker.record_failure()
-                if isinstance(e, httpx.TimeoutException):
-                    raise HyperpingAPIError(f"Request timeout after {max_attempts} attempts") from e
-                raise HyperpingAPIError(f"Request failed: {e}") from e
-
-        # Should not reach here, but just in case
-        raise HyperpingAPIError(  # pragma: no cover
-            "Request failed after all retries"
-        ) from last_exception
+            # Should not reach here, but just in case
+            raise HyperpingAPIError(  # pragma: no cover
+                "Request failed after all retries"
+            ) from last_exception
 
     # ==================== Health Check ====================
 
