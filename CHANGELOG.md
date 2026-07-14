@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-07-14
+
+### Fixed
+
+- **`list_status_pages()` returned an empty list against the live v2 API.** The
+  `StatusPage` model required a `subdomain` field, but the API returns the hosted
+  subdomain under the key `hostedsubdomain` (and omits it entirely for custom-domain
+  pages). Every record failed validation and was silently skipped. `subdomain` is now
+  optional and aliased to `hostedsubdomain`; `hostname` and `url` are also parsed.
+
+### Added
+
+- **`create_maintenance()` now guards against the silent status-page overflow.**
+  Hyperping's v1 maintenance-windows API accepts a create with more than 51 status
+  pages (returns a uuid) but never persists the window. `create_maintenance` now raises
+  `HyperpingValidationError` when `statuspages` exceeds `MAX_STATUSPAGES_PER_MAINTENANCE`
+  (51), instead of returning a phantom window. Split larger sets across multiple windows.
+
 ## [1.8.0] - 2026-05-31
 
 This is a security-focused release. It closes several credential-leak and validation gaps surfaced by an independent audit. One change is breaking for local-development workflows; see Upgrade Notes below.
