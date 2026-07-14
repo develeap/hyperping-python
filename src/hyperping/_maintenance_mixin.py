@@ -12,7 +12,11 @@ from datetime import UTC, datetime
 from hyperping._protocols import _ClientProtocol
 from hyperping._utils import expect_dict, parse_list, unwrap_list, validate_id
 from hyperping.endpoints import Endpoint
-from hyperping.exceptions import HyperpingValidationError
+from hyperping.exceptions import (
+    HyperpingAPIError,
+    HyperpingPartialBatchError,
+    HyperpingValidationError,
+)
 from hyperping.models import (
     Maintenance,
     MaintenanceCreate,
@@ -154,12 +158,24 @@ class MaintenanceMixin(_ClientProtocol):
         pages = list(maintenance.statuspages or [])
         if len(pages) <= chunk_size:
             return [self.create_maintenance(maintenance)]
+        chunks = [pages[i : i + chunk_size] for i in range(0, len(pages), chunk_size)]
         windows: list[Maintenance] = []
-        for start in range(0, len(pages), chunk_size):
-            chunk = maintenance.model_copy(
-                update={"statuspages": pages[start : start + chunk_size]}
-            )
-            windows.append(self.create_maintenance(chunk))
+        for idx, chunk_pages in enumerate(chunks):
+            chunk = maintenance.model_copy(update={"statuspages": chunk_pages})
+            try:
+                windows.append(self.create_maintenance(chunk))
+            except HyperpingAPIError as exc:
+                # Earlier windows are already live and are NOT rolled back; hand
+                # them back so the caller can record or clean them up rather than
+                # orphaning them silently.
+                raise HyperpingPartialBatchError(
+                    f"create_maintenance_windows failed on window {idx + 1} of "
+                    f"{len(chunks)}: {exc}. {len(windows)} window(s) were already "
+                    f"created and remain live.",
+                    created=windows,
+                    completed=len(windows),
+                    total=len(chunks),
+                ) from exc
         return windows
 
     def update_maintenance(

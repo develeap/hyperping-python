@@ -8,7 +8,11 @@ import respx
 
 from hyperping.client import HyperpingClient
 from hyperping.endpoints import API_BASE, Endpoint
-from hyperping.exceptions import HyperpingNotFoundError
+from hyperping.exceptions import (
+    HyperpingNotFoundError,
+    HyperpingPartialBatchError,
+    HyperpingValidationError,
+)
 from hyperping.models import (
     AddIncidentUpdateRequest,
     Incident,
@@ -292,3 +296,82 @@ class TestIncidentAPIClient:
                 "inci_missing",
                 IncidentUpdateRequest(title=LocalizedText(en="Title")),
             )
+
+
+class TestCreateIncidents:
+    """create_incidents() chunking, guard, and partial-failure behavior."""
+
+    def _incident(self, n_pages: int) -> IncidentCreate:
+        return IncidentCreate(
+            title=LocalizedText(en="X"),
+            text=LocalizedText(en="Y"),
+            type=IncidentType.INCIDENT,
+            statuspages=[f"sp_{i}" for i in range(n_pages)],
+        )
+
+    def test_create_incident_rejects_over_cap(self, client: HyperpingClient) -> None:
+        with pytest.raises(HyperpingValidationError, match="at most 51 status pages"):
+            client.create_incident(self._incident(52))
+
+    def test_create_incidents_rejects_bad_chunk_size(self, client: HyperpingClient) -> None:
+        with pytest.raises(HyperpingValidationError, match="chunk_size"):
+            client.create_incidents(self._incident(1), chunk_size=99)
+
+    @respx.mock
+    def test_create_incidents_chunks_statuspages(self, client: HyperpingClient) -> None:
+        import json
+
+        route = respx.post(f"{API_BASE}{Endpoint.INCIDENTS}").mock(
+            return_value=httpx.Response(201, json={"message": "ok", "uuid": "inci_x"})
+        )
+        respx.get(f"{API_BASE}{Endpoint.INCIDENTS}/inci_x").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "uuid": "inci_x",
+                    "date": "2024-01-15T10:00:00Z",
+                    "title": {"en": "X"},
+                    "text": {"en": "Y"},
+                    "type": "incident",
+                    "affectedComponents": [],
+                    "statuspages": [],
+                    "updates": [],
+                },
+            )
+        )
+        result = client.create_incidents(self._incident(60))
+        assert len(result) == 2
+        assert route.call_count == 2
+        sizes = [len(json.loads(c.request.content)["statuspages"]) for c in route.calls]
+        assert sizes == [51, 9]
+
+    @respx.mock
+    def test_create_incidents_partial_failure(self, client: HyperpingClient) -> None:
+        posts = {"n": 0}
+
+        def post_side(request: httpx.Request) -> httpx.Response:
+            posts["n"] += 1
+            if posts["n"] == 1:
+                return httpx.Response(201, json={"message": "ok", "uuid": "inci_1"})
+            return httpx.Response(500, json={"error": "boom"})
+
+        respx.post(f"{API_BASE}{Endpoint.INCIDENTS}").mock(side_effect=post_side)
+        respx.get(f"{API_BASE}{Endpoint.INCIDENTS}/inci_1").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "uuid": "inci_1",
+                    "date": "2024-01-15T10:00:00Z",
+                    "title": {"en": "X"},
+                    "text": {"en": "Y"},
+                    "type": "incident",
+                    "affectedComponents": [],
+                    "statuspages": [],
+                    "updates": [],
+                },
+            )
+        )
+        with pytest.raises(HyperpingPartialBatchError) as ei:
+            client.create_incidents(self._incident(60))
+        assert len(ei.value.created) == 1
+        assert ei.value.total == 2

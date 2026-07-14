@@ -714,3 +714,74 @@ class TestAsyncIncidents:
         )
         with pytest.raises(HyperpingNotFoundError):
             await async_client.get_incident("inc_x")
+
+
+class TestAsyncBatchChunking:
+    """Async chunking helpers added in 1.9.0."""
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_create_maintenance_windows_chunks(self, async_client):
+        from hyperping.models import MaintenanceCreate
+
+        route = respx.post(f"{API_BASE}{Endpoint.MAINTENANCE}").mock(
+            return_value=httpx.Response(201, json={"uuid": "mw_x"})
+        )
+        respx.get(f"{API_BASE}{Endpoint.MAINTENANCE}/mw_x").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "uuid": "mw_x",
+                    "name": "B",
+                    "start_date": "2024-01-20T00:00:00Z",
+                    "end_date": "2024-01-20T02:00:00Z",
+                    "monitors": ["mon_1"],
+                    "statuspages": [],
+                },
+            )
+        )
+        result = await async_client.create_maintenance_windows(
+            MaintenanceCreate(
+                name="B",
+                start_date="2024-01-20T00:00:00Z",
+                end_date="2024-01-20T02:00:00Z",
+                monitors=["mon_1"],
+                statuspages=[f"sp_{i}" for i in range(60)],
+            )
+        )
+        assert len(result) == 2
+        assert route.call_count == 2
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_create_incidents_chunks(self, async_client):
+        from hyperping.models import IncidentCreate, IncidentType, LocalizedText
+
+        route = respx.post(f"{API_BASE}{Endpoint.INCIDENTS}").mock(
+            return_value=httpx.Response(201, json={"message": "ok", "uuid": "inci_x"})
+        )
+        respx.get(f"{API_BASE}{Endpoint.INCIDENTS}/inci_x").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "uuid": "inci_x",
+                    "date": "2024-01-15T10:00:00Z",
+                    "title": {"en": "X"},
+                    "text": {"en": "Y"},
+                    "type": "incident",
+                    "affectedComponents": [],
+                    "statuspages": [],
+                    "updates": [],
+                },
+            )
+        )
+        result = await async_client.create_incidents(
+            IncidentCreate(
+                title=LocalizedText(en="X"),
+                text=LocalizedText(en="Y"),
+                type=IncidentType.INCIDENT,
+                statuspages=[f"sp_{i}" for i in range(60)],
+            )
+        )
+        assert len(result) == 2
+        assert route.call_count == 2

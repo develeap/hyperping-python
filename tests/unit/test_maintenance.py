@@ -8,7 +8,11 @@ import respx
 
 from hyperping.client import HyperpingClient
 from hyperping.endpoints import API_BASE, Endpoint
-from hyperping.exceptions import HyperpingNotFoundError, HyperpingValidationError
+from hyperping.exceptions import (
+    HyperpingNotFoundError,
+    HyperpingPartialBatchError,
+    HyperpingValidationError,
+)
 from hyperping.models import (
     Maintenance,
     MaintenanceCreate,
@@ -356,3 +360,75 @@ class TestMaintenanceAPIClient:
 
         assert client.is_monitor_in_maintenance("mon_1") is True
         assert client.is_monitor_in_maintenance("mon_other") is False
+
+    @respx.mock
+    def test_create_maintenance_windows_exactly_51_is_single_window(
+        self, client: HyperpingClient
+    ) -> None:
+        """51 pages is the accepted boundary — one window, not rejected, not split."""
+        route = respx.post(f"{API_BASE}{Endpoint.MAINTENANCE}").mock(
+            return_value=httpx.Response(201, json={"uuid": "mw_x"})
+        )
+        respx.get(f"{API_BASE}{Endpoint.MAINTENANCE}/mw_x").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "uuid": "mw_x",
+                    "name": "B",
+                    "start_date": "2024-01-20T00:00:00Z",
+                    "end_date": "2024-01-20T02:00:00Z",
+                    "monitors": ["mon_1"],
+                    "statuspages": [],
+                },
+            )
+        )
+        windows = client.create_maintenance_windows(
+            MaintenanceCreate(
+                name="B",
+                start_date="2024-01-20T00:00:00Z",
+                end_date="2024-01-20T02:00:00Z",
+                monitors=["mon_1"],
+                statuspages=[f"sp_{i}" for i in range(51)],
+            )
+        )
+        assert len(windows) == 1
+        assert route.call_count == 1
+
+    @respx.mock
+    def test_create_maintenance_windows_partial_failure(self, client: HyperpingClient) -> None:
+        """A later-chunk failure raises HyperpingPartialBatchError with the created ones."""
+        posts = {"n": 0}
+
+        def post_side(request: httpx.Request) -> httpx.Response:
+            posts["n"] += 1
+            if posts["n"] == 1:
+                return httpx.Response(201, json={"uuid": "mw_1"})
+            return httpx.Response(500, json={"error": "boom"})
+
+        respx.post(f"{API_BASE}{Endpoint.MAINTENANCE}").mock(side_effect=post_side)
+        respx.get(f"{API_BASE}{Endpoint.MAINTENANCE}/mw_1").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "uuid": "mw_1",
+                    "name": "B",
+                    "start_date": "2024-01-20T00:00:00Z",
+                    "end_date": "2024-01-20T02:00:00Z",
+                    "monitors": ["mon_1"],
+                    "statuspages": [],
+                },
+            )
+        )
+        with pytest.raises(HyperpingPartialBatchError) as ei:
+            client.create_maintenance_windows(
+                MaintenanceCreate(
+                    name="B",
+                    start_date="2024-01-20T00:00:00Z",
+                    end_date="2024-01-20T02:00:00Z",
+                    monitors=["mon_1"],
+                    statuspages=[f"sp_{i}" for i in range(60)],
+                )
+            )
+        assert len(ei.value.created) == 1
+        assert ei.value.completed == 1
+        assert ei.value.total == 2
