@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-07-14
+
+Corrective minor release. It renames the bundled console script (breaking) and
+retroactively documents breaking changes that shipped mislabeled in 1.8.0/1.8.1
+(see Upgrade Notes). If you pinned `~=1.8.0` or `~=1.8.1` you already received
+those breaking changes silently; this entry explains them.
+
+### BREAKING
+
+- **The bundled console script is renamed `hyp` → `hyperping`.** 1.8.1 introduced
+  a `hyp` entry point for the SDK's CLI. `hyp` is the long-standing command of the
+  separate `hyperping-automation` tool; when both are installed the SDK's script
+  silently shadowed it (last-writer-wins on `bin/hyp`), breaking that tool's
+  commands and exposing the SDK's unguarded write commands under a familiar name.
+  Invoke the SDK CLI as `hyperping …` now. (Removing/renaming a console script is
+  a breaking change; it is the reason this is 1.9.0, not 1.8.2.)
+
+### Fixed
+
+- **`create_maintenance_windows` / `create_incidents` now surface partial failures.**
+  If a later chunk fails after earlier objects were created, they raise
+  `HyperpingPartialBatchError` carrying the already-created objects (`.created`,
+  `.completed`, `.total`) instead of discarding them, so callers can record or
+  clean up rather than orphaning windows/incidents silently.
+
+### Added
+
+- **`create_incidents()`** (sync + async): splits a broadcast incident's status
+  pages into chunks of at most `MAX_STATUSPAGES_PER_INCIDENT` (51), mirroring
+  `create_maintenance_windows`. `create_incident()` now raises
+  `HyperpingValidationError` above the cap instead of silently failing to persist.
+  NOTE: the 51 cap for incidents is assumed identical to maintenance (same
+  status-page attachment path) and has not been independently measured against
+  the live API.
+- **`HyperpingPartialBatchError`** and **`MAX_STATUSPAGES_PER_INCIDENT`** exported
+  from the package root.
+
+### Upgrade Notes (breaking changes that shipped mislabeled in 1.8.0 / 1.8.1)
+
+These are not new in 1.9.0; they are documented here because 1.8.0/1.8.1 changed
+them without an upgrade note, which is why consumers were caught out:
+
+- **1.8.0** reconciled the `Integration`, `EscalationPolicy`, and `TeamMember`
+  models against the production API: `Integration.active` was **removed** and the
+  integration-type field key is now **`channel`** (was `type`); a new
+  `EscalationStep` shape was introduced. Any code reading `Integration.active` or
+  sending `type=` breaks.
+- **1.8.1** added the `hyp` console script (renamed here) and the status-page /
+  maintenance fixes; it was released as a patch despite the CLI addition.
+
+Guidance: pin `hyperping>=1.9.0,<2` and, if you consume the CLI, use `hyperping`.
+
 ## [1.8.1] - 2026-07-14
 
 ### Fixed

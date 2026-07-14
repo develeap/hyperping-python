@@ -113,3 +113,34 @@ class HyperpingValidationError(HyperpingAPIError):
     ) -> None:
         super().__init__(message, **kwargs)
         self.validation_errors = validation_errors or []
+
+
+class HyperpingPartialBatchError(HyperpingAPIError):
+    """Raised when a multi-item batch operation fails partway through.
+
+    Used by helpers that split one logical request into several API calls
+    (e.g. :meth:`create_maintenance_windows`, :meth:`create_incidents` when the
+    status-page list exceeds the per-request cap). If an item fails after
+    earlier ones succeeded, the already-created objects are NOT rolled back;
+    they are attached here so the caller can record or clean them up.
+
+    Args:
+        message: Human-readable error description.
+        created: The objects successfully created before the failure.
+        completed: How many items succeeded.
+        total: How many items were attempted in the batch.
+        **kwargs: Forwarded to :class:`HyperpingAPIError`.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        created: list[Any] | None = None,
+        completed: int | None = None,
+        total: int | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(message, **kwargs)
+        self.created = created or []
+        self.completed = completed if completed is not None else len(self.created)
+        self.total = total

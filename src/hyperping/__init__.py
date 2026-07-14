@@ -16,6 +16,7 @@ Quick start::
 
 from hyperping._async_client import AsyncHyperpingClient
 from hyperping._async_mcp_client import AsyncHyperpingMcpClient
+from hyperping._incidents_mixin import MAX_STATUSPAGES_PER_INCIDENT
 from hyperping._maintenance_mixin import MAX_STATUSPAGES_PER_MAINTENANCE
 from hyperping._version import __version__
 from hyperping.client import (
@@ -35,6 +36,7 @@ from hyperping.exceptions import (
     HyperpingAPIError,
     HyperpingAuthError,
     HyperpingNotFoundError,
+    HyperpingPartialBatchError,
     HyperpingRateLimitError,
     HyperpingValidationError,
 )
@@ -118,6 +120,7 @@ __all__ = [
     "APIVersion",
     # Exceptions
     "HyperpingAPIError",
+    "HyperpingPartialBatchError",
     "HyperpingAuthError",
     "HyperpingNotFoundError",
     "HyperpingRateLimitError",
@@ -151,6 +154,7 @@ __all__ = [
     "IncidentStatus",
     "IncidentUpdateCreate",
     # Maintenance
+    "MAX_STATUSPAGES_PER_INCIDENT",
     "MAX_STATUSPAGES_PER_MAINTENANCE",
     "Maintenance",
     "MaintenanceCreate",

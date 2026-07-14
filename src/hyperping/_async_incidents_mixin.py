@@ -9,9 +9,15 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
+from hyperping._incidents_mixin import MAX_STATUSPAGES_PER_INCIDENT
 from hyperping._protocols import _AsyncClientProtocol
 from hyperping._utils import expect_dict, parse_list, unwrap_list, validate_id
 from hyperping.endpoints import Endpoint
+from hyperping.exceptions import (
+    HyperpingAPIError,
+    HyperpingPartialBatchError,
+    HyperpingValidationError,
+)
 from hyperping.models import (
     AddIncidentUpdateRequest,
     Incident,
@@ -81,6 +87,15 @@ class AsyncIncidentsMixin(_AsyncClientProtocol):
             v3 API returns {"message": "...", "uuid": "..."} on create,
             not the full incident object. The full incident is fetched after creation.
         """
+        n_statuspages = len(incident.statuspages or [])
+        if n_statuspages > MAX_STATUSPAGES_PER_INCIDENT:
+            raise HyperpingValidationError(
+                f"An incident can reference at most {MAX_STATUSPAGES_PER_INCIDENT} "
+                f"status pages, but {n_statuspages} were supplied. Above this limit "
+                f"Hyperping's API is expected to accept the create (returns a uuid) but "
+                f"silently fail to persist it. Use create_incidents() to split the "
+                f"status pages across multiple incidents."
+            )
         payload = incident.model_dump(exclude_none=True, by_alias=True, mode="json")
         response = expect_dict(
             await self._request("POST", Endpoint.INCIDENTS, json=payload),
@@ -89,6 +104,40 @@ class AsyncIncidentsMixin(_AsyncClientProtocol):
         if "uuid" in response and "title" not in response:
             return await self.get_incident(response["uuid"])
         return Incident.model_validate(response)
+
+    async def create_incidents(
+        self,
+        incident: IncidentCreate,
+        *,
+        chunk_size: int = MAX_STATUSPAGES_PER_INCIDENT,
+    ) -> list[Incident]:
+        """Async mirror of
+        :meth:`~hyperping._incidents_mixin.IncidentsMixin.create_incidents`.
+        """
+        if not 1 <= chunk_size <= MAX_STATUSPAGES_PER_INCIDENT:
+            raise HyperpingValidationError(
+                f"chunk_size must be between 1 and "
+                f"{MAX_STATUSPAGES_PER_INCIDENT}, got {chunk_size}."
+            )
+        pages = list(incident.statuspages or [])
+        if len(pages) <= chunk_size:
+            return [await self.create_incident(incident)]
+        chunks = [pages[i : i + chunk_size] for i in range(0, len(pages), chunk_size)]
+        created: list[Incident] = []
+        for idx, chunk_pages in enumerate(chunks):
+            chunk = incident.model_copy(update={"statuspages": chunk_pages})
+            try:
+                created.append(await self.create_incident(chunk))
+            except HyperpingAPIError as exc:
+                raise HyperpingPartialBatchError(
+                    f"create_incidents failed on incident {idx + 1} of "
+                    f"{len(chunks)}: {exc}. {len(created)} incident(s) were already "
+                    f"created and remain live.",
+                    created=created,
+                    completed=len(created),
+                    total=len(chunks),
+                ) from exc
+        return created
 
     async def update_incident(
         self,
