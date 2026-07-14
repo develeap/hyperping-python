@@ -118,6 +118,50 @@ class MaintenanceMixin(_ClientProtocol):
             return self.get_maintenance(response["uuid"])
         return Maintenance.model_validate(response)
 
+    def create_maintenance_windows(
+        self,
+        maintenance: MaintenanceCreate,
+        *,
+        chunk_size: int = MAX_STATUSPAGES_PER_MAINTENANCE,
+    ) -> list[Maintenance]:
+        """Create one or more windows, splitting status pages into chunks.
+
+        Hyperping silently fails to persist a window with more than
+        :data:`MAX_STATUSPAGES_PER_MAINTENANCE` status pages (see
+        :meth:`create_maintenance`). This helper splits a large ``statuspages``
+        list into consecutive windows of at most ``chunk_size`` pages so every
+        page is covered. Each window carries the full ``monitors`` set (the API
+        rejects a window with no monitors); overlapping monitor coverage across
+        the windows is harmless.
+
+        Args:
+            maintenance: Creation data; ``statuspages`` may exceed the limit.
+            chunk_size: Max status pages per window (1..
+                :data:`MAX_STATUSPAGES_PER_MAINTENANCE`).
+
+        Returns:
+            The created windows in page order (a single window when the pages
+            fit in one chunk).
+
+        Raises:
+            HyperpingValidationError: If ``chunk_size`` is out of range.
+        """
+        if not 1 <= chunk_size <= MAX_STATUSPAGES_PER_MAINTENANCE:
+            raise HyperpingValidationError(
+                f"chunk_size must be between 1 and "
+                f"{MAX_STATUSPAGES_PER_MAINTENANCE}, got {chunk_size}."
+            )
+        pages = list(maintenance.statuspages or [])
+        if len(pages) <= chunk_size:
+            return [self.create_maintenance(maintenance)]
+        windows: list[Maintenance] = []
+        for start in range(0, len(pages), chunk_size):
+            chunk = maintenance.model_copy(
+                update={"statuspages": pages[start : start + chunk_size]}
+            )
+            windows.append(self.create_maintenance(chunk))
+        return windows
+
     def update_maintenance(
         self,
         maintenance_id: str,

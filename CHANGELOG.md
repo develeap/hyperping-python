@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pages (returns a uuid) but never persists the window. `create_maintenance` now raises
   `HyperpingValidationError` when `statuspages` exceeds `MAX_STATUSPAGES_PER_MAINTENANCE`
   (51), instead of returning a phantom window. Split larger sets across multiple windows.
+- **`create_maintenance_windows()`** (sync + async): convenience helper that splits a
+  large `statuspages` list into consecutive windows of at most 51 pages, so callers can
+  cover more pages than one window allows. Each window carries the full monitor set (the
+  API requires at least one monitor per window). `MAX_STATUSPAGES_PER_MAINTENANCE` is
+  exported for callers that chunk themselves (e.g. a broadcast-to-all-tenants command).
 
 ## [1.8.0] - 2026-05-31
 
