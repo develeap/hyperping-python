@@ -15,7 +15,18 @@ class StatusPage(BaseModel):
 
     uuid: str = Field(..., description="Status page UUID")
     name: str = Field(..., description="Status page display name")
-    subdomain: str = Field(..., description="Status page subdomain")
+    # The v2 list/get API returns the hosted subdomain under the key
+    # ``hostedsubdomain`` and omits it entirely on some responses. It was
+    # previously modelled as a required ``subdomain`` field, which made every
+    # record fail validation and be silently dropped (list_status_pages
+    # returned []). Alias to the real key and make it optional.
+    subdomain: str | None = Field(
+        default=None,
+        alias="hostedsubdomain",
+        description="Hosted status page subdomain (API key: 'hostedsubdomain'; may be absent)",
+    )
+    hostname: str | None = Field(default=None, description="Custom domain hostname, if any")
+    url: str | None = Field(default=None, description="Public status page URL")
     custom_domain: str | None = Field(
         default=None, alias="customDomain", description="Custom domain"
     )

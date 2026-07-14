@@ -36,6 +36,30 @@ class TestStatusPageModels:
         assert page.public is True
         assert len(page.monitors) == 2
 
+    def test_status_page_parse_live_v2_shape(self) -> None:
+        """Live v2 API returns 'hostedsubdomain' (not 'subdomain') plus hostname/url.
+
+        Regression: records were previously dropped because 'subdomain' was
+        required under the wrong key, so list_status_pages() returned [].
+        """
+        data = {
+            "uuid": "sp_live1",
+            "name": "Menora",
+            "hostname": "menora-status.hyp.co.il",
+            "hostedsubdomain": "menora",
+            "url": "https://menora-status.hyp.co.il",
+            "password_protected": False,
+        }
+        page = StatusPage.model_validate(data)
+        assert page.uuid == "sp_live1"
+        assert page.subdomain == "menora"  # populated via the hostedsubdomain alias
+        assert page.hostname == "menora-status.hyp.co.il"
+
+    def test_status_page_parse_without_subdomain(self) -> None:
+        """Custom-domain pages omit the hosted subdomain entirely; must not error."""
+        page = StatusPage.model_validate({"uuid": "sp_x", "name": "X"})
+        assert page.subdomain is None
+
     def test_status_page_with_custom_domain(self) -> None:
         """Test parsing a status page with custom domain."""
         data = {

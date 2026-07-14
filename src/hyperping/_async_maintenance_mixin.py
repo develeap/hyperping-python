@@ -9,9 +9,11 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
+from hyperping._maintenance_mixin import MAX_STATUSPAGES_PER_MAINTENANCE
 from hyperping._protocols import _AsyncClientProtocol
 from hyperping._utils import expect_dict, parse_list, unwrap_list, validate_id
 from hyperping.endpoints import Endpoint
+from hyperping.exceptions import HyperpingValidationError
 from hyperping.models import (
     Maintenance,
     MaintenanceCreate,
@@ -82,6 +84,15 @@ class AsyncMaintenanceMixin(_AsyncClientProtocol):
             v1 API returns {"uuid": "..."} on create, not the full maintenance object.
             The full maintenance window is fetched after creation.
         """
+        n_statuspages = len(maintenance.statuspages or [])
+        if n_statuspages > MAX_STATUSPAGES_PER_MAINTENANCE:
+            raise HyperpingValidationError(
+                f"A maintenance window can reference at most "
+                f"{MAX_STATUSPAGES_PER_MAINTENANCE} status pages, but {n_statuspages} "
+                f"were supplied. Above this limit Hyperping's API accepts the create "
+                f"(returns a uuid) but silently fails to persist the window. Split the "
+                f"status pages across multiple maintenance windows."
+            )
         payload = maintenance.model_dump(exclude_none=True, by_alias=True, mode="json")
         response = expect_dict(
             await self._request("POST", Endpoint.MAINTENANCE, json=payload),
@@ -90,6 +101,33 @@ class AsyncMaintenanceMixin(_AsyncClientProtocol):
         if "uuid" in response and "name" not in response:
             return await self.get_maintenance(response["uuid"])
         return Maintenance.model_validate(response)
+
+    async def create_maintenance_windows(
+        self,
+        maintenance: MaintenanceCreate,
+        *,
+        chunk_size: int = MAX_STATUSPAGES_PER_MAINTENANCE,
+    ) -> list[Maintenance]:
+        """Create one or more windows, splitting status pages into chunks.
+
+        Async mirror of
+        :meth:`~hyperping._maintenance_mixin.MaintenanceMixin.create_maintenance_windows`.
+        """
+        if not 1 <= chunk_size <= MAX_STATUSPAGES_PER_MAINTENANCE:
+            raise HyperpingValidationError(
+                f"chunk_size must be between 1 and "
+                f"{MAX_STATUSPAGES_PER_MAINTENANCE}, got {chunk_size}."
+            )
+        pages = list(maintenance.statuspages or [])
+        if len(pages) <= chunk_size:
+            return [await self.create_maintenance(maintenance)]
+        windows: list[Maintenance] = []
+        for start in range(0, len(pages), chunk_size):
+            chunk = maintenance.model_copy(
+                update={"statuspages": pages[start : start + chunk_size]}
+            )
+            windows.append(await self.create_maintenance(chunk))
+        return windows
 
     async def update_maintenance(
         self,

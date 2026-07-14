@@ -8,7 +8,7 @@ import respx
 
 from hyperping.client import HyperpingClient
 from hyperping.endpoints import API_BASE, Endpoint
-from hyperping.exceptions import HyperpingNotFoundError
+from hyperping.exceptions import HyperpingNotFoundError, HyperpingValidationError
 from hyperping.models import (
     Maintenance,
     MaintenanceCreate,
@@ -198,6 +198,79 @@ class TestMaintenanceAPIClient:
         )
         assert mw.uuid == "mw_new"
         assert mw.name == "New Maintenance"
+
+    def test_create_maintenance_rejects_too_many_statuspages(
+        self, client: HyperpingClient
+    ) -> None:
+        """>51 status pages must raise, not silently phantom-fail.
+
+        Hyperping's API accepts the create (returns a uuid) but never persists
+        the window above the limit; the client guards against it before the
+        POST, so no HTTP call is made.
+        """
+        with pytest.raises(HyperpingValidationError, match="at most 51 status pages"):
+            client.create_maintenance(
+                MaintenanceCreate(
+                    name="Too many pages",
+                    start_date="2024-01-20T00:00:00Z",
+                    end_date="2024-01-20T02:00:00Z",
+                    monitors=["mon_1"],
+                    statuspages=[f"sp_{i}" for i in range(52)],
+                )
+            )
+
+    @respx.mock
+    def test_create_maintenance_windows_chunks_statuspages(
+        self, client: HyperpingClient
+    ) -> None:
+        """>51 status pages are split across multiple windows of <=chunk_size."""
+        import json
+
+        create_route = respx.post(f"{API_BASE}{Endpoint.MAINTENANCE}").mock(
+            return_value=httpx.Response(201, json={"uuid": "mw_x"})
+        )
+        respx.get(f"{API_BASE}{Endpoint.MAINTENANCE}/mw_x").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "uuid": "mw_x",
+                    "name": "Big",
+                    "start_date": "2024-01-20T00:00:00Z",
+                    "end_date": "2024-01-20T02:00:00Z",
+                    "monitors": ["mon_1"],
+                    "statuspages": [],
+                },
+            )
+        )
+        windows = client.create_maintenance_windows(
+            MaintenanceCreate(
+                name="Big",
+                start_date="2024-01-20T00:00:00Z",
+                end_date="2024-01-20T02:00:00Z",
+                monitors=["mon_1"],
+                statuspages=[f"sp_{i}" for i in range(60)],
+            )
+        )
+        assert len(windows) == 2
+        assert create_route.call_count == 2
+        sizes = [len(json.loads(c.request.content)["statuspages"]) for c in create_route.calls]
+        assert sizes == [51, 9]  # every chunk within the 51-page limit
+
+    def test_create_maintenance_windows_rejects_bad_chunk_size(
+        self, client: HyperpingClient
+    ) -> None:
+        """chunk_size outside 1..51 is rejected before any HTTP call."""
+        with pytest.raises(HyperpingValidationError, match="chunk_size"):
+            client.create_maintenance_windows(
+                MaintenanceCreate(
+                    name="X",
+                    start_date="2024-01-20T00:00:00Z",
+                    end_date="2024-01-20T02:00:00Z",
+                    monitors=["mon_1"],
+                    statuspages=["sp_1"],
+                ),
+                chunk_size=99,
+            )
 
     @respx.mock
     def test_update_maintenance(self, client: HyperpingClient) -> None:

@@ -12,11 +12,21 @@ from datetime import UTC, datetime
 from hyperping._protocols import _ClientProtocol
 from hyperping._utils import expect_dict, parse_list, unwrap_list, validate_id
 from hyperping.endpoints import Endpoint
+from hyperping.exceptions import HyperpingValidationError
 from hyperping.models import (
     Maintenance,
     MaintenanceCreate,
     MaintenanceUpdate,
 )
+
+# Hyperping's v1 maintenance-windows API silently drops a create when the
+# ``statuspages`` array exceeds this many entries: the POST still returns a
+# ``{"uuid": ...}`` but the window is never persisted (the follow-up GET 404s
+# and it is absent from the list). Empirically the cutoff is 51 (51 persists,
+# 52+ vanishes), verified against the live API on 2026-07-14. Guard the create
+# so callers get a clear error instead of a phantom window; split larger sets
+# across multiple windows.
+MAX_STATUSPAGES_PER_MAINTENANCE = 51
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +98,15 @@ class MaintenanceMixin(_ClientProtocol):
             v1 API returns {"uuid": "..."} on create, not the full maintenance object.
             The full maintenance window is fetched after creation.
         """
+        n_statuspages = len(maintenance.statuspages or [])
+        if n_statuspages > MAX_STATUSPAGES_PER_MAINTENANCE:
+            raise HyperpingValidationError(
+                f"A maintenance window can reference at most "
+                f"{MAX_STATUSPAGES_PER_MAINTENANCE} status pages, but {n_statuspages} "
+                f"were supplied. Above this limit Hyperping's API accepts the create "
+                f"(returns a uuid) but silently fails to persist the window. Split the "
+                f"status pages across multiple maintenance windows."
+            )
         payload = maintenance.model_dump(exclude_none=True, by_alias=True, mode="json")
         response = expect_dict(
             self._request("POST", Endpoint.MAINTENANCE, json=payload),
@@ -98,6 +117,50 @@ class MaintenanceMixin(_ClientProtocol):
             # Fetch the full maintenance after creation
             return self.get_maintenance(response["uuid"])
         return Maintenance.model_validate(response)
+
+    def create_maintenance_windows(
+        self,
+        maintenance: MaintenanceCreate,
+        *,
+        chunk_size: int = MAX_STATUSPAGES_PER_MAINTENANCE,
+    ) -> list[Maintenance]:
+        """Create one or more windows, splitting status pages into chunks.
+
+        Hyperping silently fails to persist a window with more than
+        :data:`MAX_STATUSPAGES_PER_MAINTENANCE` status pages (see
+        :meth:`create_maintenance`). This helper splits a large ``statuspages``
+        list into consecutive windows of at most ``chunk_size`` pages so every
+        page is covered. Each window carries the full ``monitors`` set (the API
+        rejects a window with no monitors); overlapping monitor coverage across
+        the windows is harmless.
+
+        Args:
+            maintenance: Creation data; ``statuspages`` may exceed the limit.
+            chunk_size: Max status pages per window (1..
+                :data:`MAX_STATUSPAGES_PER_MAINTENANCE`).
+
+        Returns:
+            The created windows in page order (a single window when the pages
+            fit in one chunk).
+
+        Raises:
+            HyperpingValidationError: If ``chunk_size`` is out of range.
+        """
+        if not 1 <= chunk_size <= MAX_STATUSPAGES_PER_MAINTENANCE:
+            raise HyperpingValidationError(
+                f"chunk_size must be between 1 and "
+                f"{MAX_STATUSPAGES_PER_MAINTENANCE}, got {chunk_size}."
+            )
+        pages = list(maintenance.statuspages or [])
+        if len(pages) <= chunk_size:
+            return [self.create_maintenance(maintenance)]
+        windows: list[Maintenance] = []
+        for start in range(0, len(pages), chunk_size):
+            chunk = maintenance.model_copy(
+                update={"statuspages": pages[start : start + chunk_size]}
+            )
+            windows.append(self.create_maintenance(chunk))
+        return windows
 
     def update_maintenance(
         self,
