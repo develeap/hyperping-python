@@ -67,8 +67,9 @@ def test_http_allowed_with_explicit_opt_in_emits_warning(ctor):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         client = ctor("http://localhost:8080", allow_insecure=True)
-    assert any("insecure" in str(w.message).lower() or "http" in str(w.message).lower()
-               for w in caught), "expected a security warning when allow_insecure=True"
+    assert any(
+        "insecure" in str(w.message).lower() or "http" in str(w.message).lower() for w in caught
+    ), "expected a security warning when allow_insecure=True"
     # Clean up where applicable.
     closer = getattr(client, "close", None)
     if closer is not None and not callable(getattr(closer, "__await__", None)):

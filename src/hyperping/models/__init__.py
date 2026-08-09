@@ -9,6 +9,7 @@ accessible but emit a :class:`DeprecationWarning` on first import. They will
 be removed in v0.3.0.
 """
 
+from hyperping.models._alert_models import Alert, AlertType
 from hyperping.models._healthcheck_models import (
     Healthcheck,
     HealthcheckCreate,
@@ -86,6 +87,9 @@ from hyperping.models._statuspage_models import (
 )
 
 __all__ = [
+    # Alert models (PY-10: provisional, reconcile when alerts endpoint ships)
+    "Alert",
+    "AlertType",
     # Shared primitives
     "LocalizedText",
     "RequestHeader",
