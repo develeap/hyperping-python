@@ -107,6 +107,8 @@ __all__ = [
     "AsyncHyperpingMcpClient",
     "HyperpingClient",
     "HyperpingMcpClient",
+    # MCP server
+    "create_mcp_server",
     # MCP
     "MCP_URL",
     # Configuration
@@ -207,7 +209,15 @@ def __getattr__(name: str) -> object:
     ``IncidentStatus`` and ``IncidentUpdateCreate`` — legacy type aliases.
 
     All four will be removed in v0.3.0.
+
+    ``create_mcp_server`` is loaded lazily to avoid importing the optional
+    ``mcp`` package at top-level import time.
     """
+    if name == "create_mcp_server":
+        from hyperping.mcp_server import create_mcp_server
+
+        return create_mcp_server
+
     import warnings
 
     if name == "HYPERPING_API_BASE":
