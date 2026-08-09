@@ -2,6 +2,7 @@
 
 from unittest.mock import patch
 
+import httpcore2
 import httpx
 import pytest
 import respx
@@ -69,7 +70,7 @@ class TestValidateConnection:
     def test_ping_timeout_wraps(self) -> None:
         """ping() wraps httpx.TimeoutException."""
         respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(
-            side_effect=httpx.TimeoutException("timed out")
+            side_effect=httpcore2.ConnectTimeout("timed out")
         )
         c = HyperpingClient(
             api_key="sk_test",
@@ -83,7 +84,7 @@ class TestValidateConnection:
     def test_ping_request_error_wraps(self) -> None:
         """ping() wraps httpx.RequestError."""
         respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(
-            side_effect=httpx.ConnectError("connection refused")
+            side_effect=httpcore2.ConnectError("connection refused")
         )
         c = HyperpingClient(
             api_key="sk_test",
@@ -250,7 +251,7 @@ class TestTimeoutRetry:
     def test_timeout_retries_then_raises(self) -> None:
         """Timeout after all retries raises HyperpingAPIError."""
         respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(
-            side_effect=httpx.TimeoutException("timed out")
+            side_effect=httpcore2.ConnectTimeout("timed out")
         )
         with patch("hyperping.client.time.sleep"):
             c = HyperpingClient(
@@ -265,7 +266,7 @@ class TestTimeoutRetry:
     def test_request_error_retries_then_raises(self) -> None:
         """Connection error after all retries raises HyperpingAPIError."""
         respx.get(f"{API_BASE}{Endpoint.MONITORS}").mock(
-            side_effect=httpx.ConnectError("connection refused")
+            side_effect=httpcore2.ConnectError("connection refused")
         )
         with patch("hyperping.client.time.sleep"):
             c = HyperpingClient(

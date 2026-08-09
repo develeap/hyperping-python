@@ -20,7 +20,7 @@ from collections.abc import Callable
 from typing import Any
 from urllib.parse import urlsplit
 
-import httpx
+import httpx2 as httpx
 from pydantic import SecretStr
 
 from hyperping._async_healthchecks_mixin import AsyncHealthchecksMixin
